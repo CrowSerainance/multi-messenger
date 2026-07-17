@@ -49,6 +49,9 @@ export default function App() {
       name: 'home',
     });
 
+  const [resuming, setResuming] =
+    useState(true);
+
   const hydrated =
     useAccountStore(
       (state) =>
@@ -77,7 +80,47 @@ export default function App() {
     void hydrate();
   }, [hydrate]);
 
-  if (!hydrated) {
+  // Resume the last active account on launch
+  // instead of always landing on the account
+  // list.
+  useEffect(() => {
+    if (!hydrated) {
+      return;
+    }
+
+    const lastActiveId =
+      useAccountStore.getState()
+        .activeAccountId;
+
+    if (!lastActiveId) {
+      setResuming(false);
+      return;
+    }
+
+    switchAccount(lastActiveId)
+      .then(() => {
+        setRoute({
+          name: 'messenger',
+        });
+      })
+      .catch((error) => {
+        if (
+          error instanceof
+          SessionExpiredError
+        ) {
+          setRoute({
+            name: 'login',
+            reauthAccountId:
+              lastActiveId,
+          });
+        }
+      })
+      .finally(() => {
+        setResuming(false);
+      });
+  }, [hydrated, switchAccount]);
+
+  if (!hydrated || resuming) {
     return (
       <View style={styles.loading}>
         <ActivityIndicator

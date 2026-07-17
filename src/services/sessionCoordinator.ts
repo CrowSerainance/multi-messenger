@@ -4,6 +4,9 @@ import {
 
 import {
   clearGlobalCookies,
+  extractCurrentCookies,
+  getAccountUserId,
+  hasAuthenticationCookies,
   restoreCookieSnapshot,
   saveCurrentSessionFromJar,
   SessionExpiredError,
@@ -66,6 +69,12 @@ export async function claimLoginSession(
   accountId: string,
 ): Promise<void> {
   return exclusive(async () => {
+    if (jarOwner?.kind !== 'login') {
+      throw new Error(
+        'The login session is no longer active, so these cookies cannot be claimed.',
+      );
+    }
+
     const saved =
       await saveCurrentSessionFromJar(
         accountId,
@@ -81,6 +90,18 @@ export async function claimLoginSession(
       kind: 'account',
       accountId,
     };
+  });
+}
+
+export async function abandonLoginSession():
+Promise<void> {
+  return exclusive(async () => {
+    if (jarOwner?.kind !== 'login') {
+      return;
+    }
+
+    await clearGlobalCookies();
+    jarOwner = null;
   });
 }
 
@@ -108,6 +129,22 @@ export async function persistOwnedSession(
   });
 }
 
+export async function releaseOwnedSession(
+  accountId: string,
+): Promise<void> {
+  return exclusive(async () => {
+    if (
+      jarOwner?.kind !== 'account' ||
+      jarOwner.accountId !== accountId
+    ) {
+      return;
+    }
+
+    await clearGlobalCookies();
+    jarOwner = null;
+  });
+}
+
 export async function switchGlobalSession(
   targetAccountId: string,
 ): Promise<void> {
@@ -117,6 +154,58 @@ export async function switchGlobalSession(
       jarOwner.accountId === targetAccountId
     ) {
       return;
+    }
+
+    const targetSnapshot =
+      await loadSessionSnapshot(
+        targetAccountId,
+      );
+
+    // Validate the target before touching the
+    // jar, so a bad snapshot never destroys the
+    // currently working session.
+    if (
+      !targetSnapshot ||
+      !hasAuthenticationCookies(
+        targetSnapshot.cookies,
+      )
+    ) {
+      throw new SessionExpiredError(
+        'No usable saved session exists for this account.',
+      );
+    }
+
+    // After a cold start the jar owner is
+    // unknown, but the jar may already hold this
+    // account's freshest cookies. Adopt them
+    // instead of overwriting with an older
+    // snapshot.
+    if (jarOwner === null) {
+      const jarCookies =
+        await extractCurrentCookies();
+
+      const jarUserId =
+        getAccountUserId(jarCookies);
+
+      if (
+        jarUserId !== null &&
+        jarUserId ===
+          getAccountUserId(
+            targetSnapshot.cookies,
+          ) &&
+        hasAuthenticationCookies(jarCookies)
+      ) {
+        jarOwner = {
+          kind: 'account',
+          accountId: targetAccountId,
+        };
+
+        await saveCurrentSessionFromJar(
+          targetAccountId,
+        );
+
+        return;
+      }
     }
 
     const previousAccountId =
@@ -141,17 +230,6 @@ export async function switchGlobalSession(
     jarOwner = null;
 
     try {
-      const targetSnapshot =
-        await loadSessionSnapshot(
-          targetAccountId,
-        );
-
-      if (!targetSnapshot) {
-        throw new SessionExpiredError(
-          'No saved session exists for this account.',
-        );
-      }
-
       await restoreCookieSnapshot(
         targetSnapshot,
       );

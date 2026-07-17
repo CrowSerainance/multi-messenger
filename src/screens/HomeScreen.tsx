@@ -1,6 +1,7 @@
 import React from 'react';
 
 import {
+  Alert,
   Button,
   FlatList,
   Pressable,
@@ -8,6 +9,10 @@ import {
   Text,
   View,
 } from 'react-native';
+
+import type {
+  Account,
+} from '../types/session';
 
 import {
   useAccountStore,
@@ -30,10 +35,44 @@ export function HomeScreen({
         state.accounts,
     );
 
+  const removeAccount =
+    useAccountStore(
+      (state) =>
+        state.removeAccount,
+    );
+
+  const confirmDelete = (
+    account: Account,
+  ) => {
+    Alert.alert(
+      'Remove account',
+      `Remove "${account.name}" and its saved session? This cannot be undone.`,
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: () => {
+            void removeAccount(
+              account.id,
+            );
+          },
+        },
+      ],
+    );
+  };
+
   return (
     <View style={styles.container}>
       <Text style={styles.heading}>
         Messenger Accounts
+      </Text>
+
+      <Text style={styles.hint}>
+        Tap to open · hold to remove
       </Text>
 
       <FlatList
@@ -56,6 +95,9 @@ export function HomeScreen({
               onSelectAccount(
                 item.id,
               )
+            }
+            onLongPress={() =>
+              confirmDelete(item)
             }
           >
             <View>
@@ -102,7 +144,12 @@ const styles =
     heading: {
       fontSize: 26,
       fontWeight: '800',
-      marginBottom: 20,
+      marginBottom: 4,
+    },
+
+    hint: {
+      color: '#888',
+      marginBottom: 16,
     },
 
     list: {

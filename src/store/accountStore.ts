@@ -9,6 +9,7 @@ import type {
 import {
   claimLoginSession,
   persistOwnedSession,
+  releaseOwnedSession,
   switchGlobalSession,
 } from '../services/sessionCoordinator';
 
@@ -345,6 +346,10 @@ export const useAccountStore =
       if (nextActive === accountId) {
         nextActive = null;
       }
+
+      await releaseOwnedSession(
+        accountId,
+      );
 
       await deleteSessionSnapshot(
         accountId,

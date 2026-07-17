@@ -16,12 +16,14 @@ interface Props {
   visible: boolean;
   busy: boolean;
   onSubmit(name: string): void;
+  onCancel(): void;
 }
 
 export function NameAccountModal({
   visible,
   busy,
   onSubmit,
+  onCancel,
 }: Props) {
   const [name, setName] =
     useState('');
@@ -37,6 +39,7 @@ export function NameAccountModal({
       transparent
       animationType="fade"
       visible={visible}
+      onRequestClose={onCancel}
     >
       <View style={styles.backdrop}>
         <View style={styles.card}>
@@ -66,6 +69,12 @@ export function NameAccountModal({
             onPress={() =>
               onSubmit(name.trim())
             }
+          />
+
+          <Button
+            title="Cancel"
+            disabled={busy}
+            onPress={onCancel}
           />
         </View>
       </View>

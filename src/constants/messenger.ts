@@ -37,3 +37,34 @@ export function isLoginUrl(url: string): boolean {
     normalized.includes('login.php')
   );
 }
+
+const IN_APP_HOSTS = [
+  'facebook.com',
+  'messenger.com',
+  'fb.com',
+  'fbcdn.net',
+  'fbsbx.com',
+] as const;
+
+function hostOfUrl(url: string): string | null {
+  const match = /^https?:\/\/([^/:?#]+)/i.exec(url);
+  return match ? match[1].toLowerCase() : null;
+}
+
+export function isHttpUrl(url: string): boolean {
+  return /^https?:\/\//i.test(url);
+}
+
+export function isInAppUrl(url: string): boolean {
+  const host = hostOfUrl(url);
+
+  if (!host) {
+    return false;
+  }
+
+  return IN_APP_HOSTS.some(
+    (domain) =>
+      host === domain ||
+      host.endsWith(`.${domain}`),
+  );
+}

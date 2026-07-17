@@ -124,6 +124,15 @@ export function MessengerScreen({
         return;
       }
 
+      // Re-selecting the active account
+      // would only remount the WebView and
+      // lose the current chat position.
+      if (
+        accountId === activeAccountId
+      ) {
+        return;
+      }
+
       try {
         await switchAccount(
           accountId,

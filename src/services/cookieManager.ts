@@ -93,6 +93,18 @@ function isExpired(
   return expiresAt <= now;
 }
 
+export function getAccountUserId(
+  cookies: StoredCookie[],
+): string | null {
+  const cookie = cookies.find(
+    (candidate) =>
+      candidate.name === 'c_user' &&
+      !isExpired(candidate),
+  );
+
+  return cookie?.value ?? null;
+}
+
 export function hasAuthenticationCookies(
   cookies: StoredCookie[],
 ): boolean {

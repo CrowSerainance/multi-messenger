@@ -18,6 +18,7 @@ import {
 } from 'react-native-webview';
 
 import {
+  isHttpUrl,
   MESSENGER_LOGIN_URL,
   MOBILE_USER_AGENT,
 } from '../constants/messenger';
@@ -27,6 +28,7 @@ import {
 } from '../services/cookieManager';
 
 import {
+  abandonLoginSession,
   beginFreshLoginSession,
 } from '../services/sessionCoordinator';
 
@@ -195,21 +197,42 @@ export function LoginScreen({
         await switchAccount(
           activeAccountId,
         );
+      } else {
+        await abandonLoginSession();
       }
+    } catch {
+      // The previous session could not be
+      // restored; leaving the screen is still
+      // the right move, and the jar will be
+      // reset by the next login or switch.
     } finally {
       onCancel();
     }
   };
 
+  const cancelFromModal = () => {
+    setShowNameModal(false);
+    void cancel();
+  };
+
   if (!ready) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" />
+        {error ? (
+          <>
+            <Text style={styles.error}>
+              {error}
+            </Text>
 
-        {error && (
-          <Text style={styles.error}>
-            {error}
-          </Text>
+            <Button
+              title="Go Back"
+              onPress={() => {
+                void cancel();
+              }}
+            />
+          </>
+        ) : (
+          <ActivityIndicator size="large" />
         )}
       </View>
     );
@@ -248,6 +271,32 @@ export function LoginScreen({
         thirdPartyCookiesEnabled
         domStorageEnabled
         javaScriptEnabled
+        startInLoadingState
+        renderLoading={() => (
+          <View style={styles.center}>
+            <ActivityIndicator
+              size="large"
+            />
+          </View>
+        )}
+        onShouldStartLoadWithRequest={(
+          request,
+        ) => {
+          if (
+            request.isTopFrame === false
+          ) {
+            return true;
+          }
+
+          // Block custom schemes such as
+          // fb:// or intent:// that would
+          // otherwise crash the WebView.
+          return (
+            request.url ===
+              'about:blank' ||
+            isHttpUrl(request.url)
+          );
+        }}
         onLoadEnd={() => {
           void detectLogin();
         }}
@@ -270,6 +319,7 @@ export function LoginScreen({
         onSubmit={(name) => {
           void saveNewAccount(name);
         }}
+        onCancel={cancelFromModal}
       />
     </View>
   );

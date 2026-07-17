@@ -5,9 +5,13 @@ import React, {
 } from 'react';
 
 import {
+  ActivityIndicator,
   AppState,
   type AppStateStatus,
+  BackHandler,
+  Linking,
   StyleSheet,
+  View,
 } from 'react-native';
 
 import {
@@ -15,6 +19,8 @@ import {
 } from 'react-native-webview';
 
 import {
+  isHttpUrl,
+  isInAppUrl,
   isLoginUrl,
   MESSENGER_HOME_URL,
   MOBILE_USER_AGENT,
@@ -42,6 +48,12 @@ export function MessengerWebView({
   epoch,
   onExpired,
 }: Props) {
+  const webViewRef =
+    useRef<WebView>(null);
+
+  const canGoBackRef =
+    useRef(false);
+
   const expiredReported =
     useRef(false);
 
@@ -78,6 +90,25 @@ export function MessengerWebView({
       void persist();
     };
   }, [persist]);
+
+  useEffect(() => {
+    const subscription =
+      BackHandler.addEventListener(
+        'hardwareBackPress',
+        () => {
+          if (canGoBackRef.current) {
+            webViewRef.current?.goBack();
+            return true;
+          }
+
+          return false;
+        },
+      );
+
+    return () => {
+      subscription.remove();
+    };
+  }, []);
 
   const persistAfterLoad =
     useCallback(() => {
@@ -128,6 +159,7 @@ export function MessengerWebView({
 
   return (
     <WebView
+      ref={webViewRef}
       key={`${accountId}:${epoch}`}
       style={styles.webview}
       source={{
@@ -140,6 +172,50 @@ export function MessengerWebView({
       thirdPartyCookiesEnabled
       domStorageEnabled
       javaScriptEnabled
+      pullToRefreshEnabled
+      allowsBackForwardNavigationGestures
+      startInLoadingState
+      renderLoading={() => (
+        <View style={styles.loading}>
+          <ActivityIndicator
+            size="large"
+          />
+        </View>
+      )}
+      onShouldStartLoadWithRequest={(
+        request,
+      ) => {
+        // Sub-frame loads (embeds, captchas)
+        // must not be redirected out of the app.
+        if (
+          request.isTopFrame === false
+        ) {
+          return true;
+        }
+
+        const url = request.url;
+
+        if (
+          url === 'about:blank' ||
+          isInAppUrl(url)
+        ) {
+          return true;
+        }
+
+        // Shared links open in the system
+        // browser; custom schemes such as
+        // fb:// or intent:// are dropped so
+        // they cannot crash the WebView.
+        if (isHttpUrl(url)) {
+          Linking.openURL(url).catch(
+            () => {
+              // Nothing can handle the URL.
+            },
+          );
+        }
+
+        return false;
+      }}
       onLoadEnd={(event) => {
         const url =
           event.nativeEvent.url;
@@ -153,6 +229,9 @@ export function MessengerWebView({
       onNavigationStateChange={(
         navState,
       ) => {
+        canGoBackRef.current =
+          navState.canGoBack;
+
         void detectExpiredSession(
           navState.url,
         );
@@ -165,5 +244,12 @@ const styles =
   StyleSheet.create({
     webview: {
       flex: 1,
+    },
+
+    loading: {
+      ...StyleSheet.absoluteFill,
+      justifyContent: 'center',
+      alignItems: 'center',
+      backgroundColor: 'white',
     },
   });
