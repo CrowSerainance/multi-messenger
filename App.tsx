@@ -1,15 +1,22 @@
 import React, {
   useEffect,
+  useRef,
   useState,
 } from 'react';
 
 import {
   ActivityIndicator,
   Alert,
+  AppState,
+  type AppStateStatus,
   StatusBar,
   StyleSheet,
   View,
 } from 'react-native';
+
+import {
+  SensitiveScreen,
+} from './src/components/SensitiveScreen';
 
 import {
   HomeScreen,
@@ -20,8 +27,32 @@ import {
 } from './src/screens/LoginScreen';
 
 import {
+  ManageAccountsScreen,
+} from './src/screens/ManageAccountsScreen';
+
+import {
   MessengerScreen,
 } from './src/screens/MessengerScreen';
+
+import {
+  PrivacyPolicyScreen,
+} from './src/screens/PrivacyPolicyScreen';
+
+import {
+  SecuritySettingsScreen,
+} from './src/screens/SecuritySettingsScreen';
+
+import {
+  SessionDiagnosticsScreen,
+} from './src/screens/SessionDiagnosticsScreen';
+
+import {
+  SetupPinScreen,
+} from './src/screens/SetupPinScreen';
+
+import {
+  UnlockScreen,
+} from './src/screens/UnlockScreen';
 
 import {
   SessionExpiredError,
@@ -31,12 +62,29 @@ import {
   useAccountStore,
 } from './src/store/accountStore';
 
+import {
+  useAppLockStore,
+} from './src/store/appLockStore';
+
 type Route =
   | {
       name: 'home';
     }
   | {
       name: 'messenger';
+    }
+  | {
+      name: 'diagnostics';
+    }
+  | {
+      name: 'manage';
+    }
+  | {
+      name: 'security';
+    }
+  | {
+      name: 'privacy';
+      from: 'security' | 'manage' | 'home';
     }
   | {
       name: 'login';
@@ -50,7 +98,34 @@ export default function App() {
     });
 
   const [resuming, setResuming] =
-    useState(true);
+    useState(false);
+
+  const didResumeRef = useRef(false);
+
+  const lockReady =
+    useAppLockStore(
+      (state) => state.ready,
+    );
+
+  const unlocked =
+    useAppLockStore(
+      (state) => state.unlocked,
+    );
+
+  const lockConfig =
+    useAppLockStore(
+      (state) => state.config,
+    );
+
+  const bootstrapLock =
+    useAppLockStore(
+      (state) => state.bootstrap,
+    );
+
+  const lockApp =
+    useAppLockStore(
+      (state) => state.lock,
+    );
 
   const hydrated =
     useAccountStore(
@@ -70,32 +145,51 @@ export default function App() {
         state.switchAccount,
     );
 
-  const activeAccountId =
+  const persistActiveSession =
     useAccountStore(
       (state) =>
-        state.activeAccountId,
+        state.persistActiveSession,
     );
 
   useEffect(() => {
-    void hydrate();
-  }, [hydrate]);
+    void bootstrapLock();
+  }, [bootstrapLock]);
 
-  // Resume the last active account on launch
-  // instead of always landing on the account
-  // list.
+  // Sessions stay unread until the app is unlocked.
   useEffect(() => {
-    if (!hydrated) {
+    if (!unlocked || hydrated) {
       return;
     }
 
+    void hydrate();
+  }, [unlocked, hydrated, hydrate]);
+
+  // Resume the preferred account once after the
+  // first successful unlock + hydrate.
+  useEffect(() => {
+    if (!unlocked || !hydrated) {
+      return;
+    }
+
+    if (didResumeRef.current) {
+      return;
+    }
+
+    didResumeRef.current = true;
+
+    const storeState =
+      useAccountStore.getState();
+
     const lastActiveId =
-      useAccountStore.getState()
-        .activeAccountId;
+      storeState.defaultAccountId ??
+      storeState.activeAccountId;
 
     if (!lastActiveId) {
       setResuming(false);
       return;
     }
+
+    setResuming(true);
 
     switchAccount(lastActiveId)
       .then(() => {
@@ -118,7 +212,71 @@ export default function App() {
       .finally(() => {
         setResuming(false);
       });
-  }, [hydrated, switchAccount]);
+  }, [unlocked, hydrated, switchAccount]);
+
+  // Relock when the app fully backgrounds so
+  // returning always requires PIN/biometric.
+  // Use background only (not inactive) to avoid
+  // locking during the biometric system sheet.
+  useEffect(() => {
+    const onChange = (
+      nextState: AppStateStatus,
+    ) => {
+      if (nextState !== 'background') {
+        return;
+      }
+
+      if (
+        !useAppLockStore.getState().unlocked
+      ) {
+        return;
+      }
+
+      void persistActiveSession()
+        .catch(() => undefined)
+        .finally(() => {
+          lockApp();
+        });
+    };
+
+    const subscription =
+      AppState.addEventListener(
+        'change',
+        onChange,
+      );
+
+    return () => {
+      subscription.remove();
+    };
+  }, [lockApp, persistActiveSession]);
+
+  if (!lockReady) {
+    return (
+      <View style={styles.loading}>
+        <ActivityIndicator
+          size="large"
+        />
+      </View>
+    );
+  }
+
+  if (!lockConfig) {
+    return (
+      <>
+        <StatusBar barStyle="dark-content" />
+        <SetupPinScreen />
+      </>
+    );
+  }
+
+  if (!unlocked) {
+    return (
+      <>
+        <StatusBar barStyle="dark-content" />
+        <UnlockScreen />
+      </>
+    );
+  }
 
   if (!hydrated || resuming) {
     return (
@@ -184,6 +342,85 @@ export default function App() {
               name: 'login',
             });
           }}
+
+          onManageAccounts={() => {
+            setRoute({
+              name: 'manage',
+            });
+          }}
+
+          onOpenSecurity={() => {
+            setRoute({
+              name: 'security',
+            });
+          }}
+
+          onOpenPrivacy={() => {
+            setRoute({
+              name: 'privacy',
+              from: 'home',
+            });
+          }}
+        />
+      );
+      break;
+
+    case 'manage':
+      content = (
+        <ManageAccountsScreen
+          onBack={() => {
+            setRoute({
+              name: 'home',
+            });
+          }}
+
+          onOpenSecurity={() => {
+            setRoute({
+              name: 'security',
+            });
+          }}
+
+          onOpenPrivacy={() => {
+            setRoute({
+              name: 'privacy',
+              from: 'manage',
+            });
+          }}
+        />
+      );
+      break;
+
+    case 'security':
+      content = (
+        <SecuritySettingsScreen
+          onBack={() => {
+            setRoute({
+              name: 'manage',
+            });
+          }}
+
+          onOpenPrivacy={() => {
+            setRoute({
+              name: 'privacy',
+              from: 'security',
+            });
+          }}
+        />
+      );
+      break;
+
+    case 'privacy':
+      content = (
+        <PrivacyPolicyScreen
+          onBack={() => {
+            setRoute(
+              route.from === 'home'
+                ? { name: 'home' }
+                : route.from === 'manage'
+                  ? { name: 'manage' }
+                  : { name: 'security' },
+            );
+          }}
         />
       );
       break;
@@ -201,9 +438,10 @@ export default function App() {
             });
           }}
 
-          onCancel={() => {
+          onCancel={(destination) => {
             setRoute(
-              activeAccountId
+              destination ===
+                'messenger'
                 ? {
                     name:
                       'messenger',
@@ -241,6 +479,24 @@ export default function App() {
               name: 'home',
             });
           }}
+
+          onOpenDiagnostics={() => {
+            setRoute({
+              name: 'diagnostics',
+            });
+          }}
+        />
+      );
+      break;
+
+    case 'diagnostics':
+      content = (
+        <SessionDiagnosticsScreen
+          onBack={() => {
+            setRoute({
+              name: 'messenger',
+            });
+          }}
         />
       );
       break;
@@ -252,7 +508,9 @@ export default function App() {
         barStyle="dark-content"
       />
 
-      {content}
+      <SensitiveScreen>
+        {content}
+      </SensitiveScreen>
     </>
   );
 }

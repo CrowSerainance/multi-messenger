@@ -31,8 +31,8 @@ import {
 } from '../services/cookieManager';
 
 import {
-  persistOwnedSession,
-} from '../services/sessionCoordinator';
+  useAccountStore,
+} from '../store/accountStore';
 
 interface Props {
   accountId: string;
@@ -60,12 +60,27 @@ export function MessengerWebView({
   const lastSaveAt =
     useRef(0);
 
+  const persistActiveSession =
+    useAccountStore(
+      (state) =>
+        state.persistActiveSession,
+    );
+
+  // The store persist path also records the
+  // account's last successful refresh time.
+  // Ownership is still verified by the session
+  // coordinator, so a late unmount can never
+  // save into the wrong account.
   const persist =
     useCallback(async () => {
-      await persistOwnedSession(
-        accountId,
-      );
-    }, [accountId]);
+      try {
+        await persistActiveSession();
+      } catch {
+        // Native failures are already captured by
+        // the redacted session diagnostics service.
+        // Background persistence is best-effort.
+      }
+    }, [persistActiveSession]);
 
   useEffect(() => {
     const listener = (
@@ -141,8 +156,16 @@ export function MessengerWebView({
           },
         );
 
-        const stillAuthenticated =
-          await isCurrentJarAuthenticated();
+        let stillAuthenticated: boolean;
+
+        try {
+          stillAuthenticated =
+            await isCurrentJarAuthenticated();
+        } catch {
+          // A native cookie read failure is not
+          // evidence that the account expired.
+          return;
+        }
 
         if (
           !stillAuthenticated &&

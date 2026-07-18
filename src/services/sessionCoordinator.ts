@@ -12,6 +12,15 @@ import {
   SessionExpiredError,
 } from './cookieManager';
 
+import {
+  waitForPendingCookieMutations,
+} from './nativeOperation';
+
+import {
+  isNativeOperationTimeout,
+  SessionStateError,
+} from './sessionErrors';
+
 type JarOwner =
   | {
       kind: 'account';
@@ -35,8 +44,8 @@ function exclusive<T>(
   );
 
   operationTail = result.then(
-    () => undefined,
-    () => undefined,
+    waitForPendingCookieMutations,
+    waitForPendingCookieMutations,
   );
 
   return result;
@@ -57,6 +66,7 @@ export async function beginFreshLoginSession():
 Promise<void> {
   return exclusive(async () => {
     await captureCurrentOwnerUnsafe();
+    jarOwner = null;
     await clearGlobalCookies();
 
     jarOwner = {
@@ -70,7 +80,7 @@ export async function claimLoginSession(
 ): Promise<void> {
   return exclusive(async () => {
     if (jarOwner?.kind !== 'login') {
-      throw new Error(
+      throw new SessionStateError(
         'The login session is no longer active, so these cookies cannot be claimed.',
       );
     }
@@ -100,8 +110,8 @@ Promise<void> {
       return;
     }
 
-    await clearGlobalCookies();
     jarOwner = null;
+    await clearGlobalCookies();
   });
 }
 
@@ -140,8 +150,25 @@ export async function releaseOwnedSession(
       return;
     }
 
-    await clearGlobalCookies();
     jarOwner = null;
+    await clearGlobalCookies();
+  });
+}
+
+export async function forceClearGlobalSession():
+Promise<void> {
+  return exclusive(async () => {
+    // Best-effort save of the current owner so a
+    // manual clear does not discard the freshest
+    // cookies silently.
+    try {
+      await captureCurrentOwnerUnsafe();
+    } catch {
+      // The jar is being discarded anyway.
+    }
+
+    jarOwner = null;
+    await clearGlobalCookies();
   });
 }
 
@@ -226,8 +253,8 @@ export async function switchGlobalSession(
           )
         : null;
 
-    await clearGlobalCookies();
     jarOwner = null;
+    await clearGlobalCookies();
 
     try {
       await restoreCookieSnapshot(
@@ -239,7 +266,10 @@ export async function switchGlobalSession(
         accountId: targetAccountId,
       };
     } catch (error) {
-      if (rollbackSnapshot) {
+      if (
+        rollbackSnapshot &&
+        !isNativeOperationTimeout(error)
+      ) {
         try {
           await clearGlobalCookies();
 

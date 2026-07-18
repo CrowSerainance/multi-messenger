@@ -20,10 +20,96 @@ import {
   saveSessionSnapshot,
 } from './cookieVault';
 
-export class SessionExpiredError extends Error {
-  constructor(message = 'Saved session is no longer usable.') {
-    super(message);
-    this.name = 'SessionExpiredError';
+import {
+  COOKIE_OPERATION_TIMEOUT_MS,
+  withNativeOperationTimeout,
+} from './nativeOperation';
+
+import {
+  CookieClearError,
+  CookieReadError,
+  CookieWriteError,
+  SessionError,
+  SessionExpiredError,
+  type NativeOperationName,
+} from './sessionErrors';
+
+import {
+  recordSessionDiagnostic,
+} from './sessionDiagnostics';
+
+export {
+  CookieClearError,
+  CookieReadError,
+  CookieWriteError,
+  SessionExpiredError,
+} from './sessionErrors';
+
+async function readCookiesWithRetry<T>(
+  execute: () => Promise<T>,
+): Promise<T> {
+  let lastError: unknown;
+
+  for (const attempt of [1, 2] as const) {
+    try {
+      return await withNativeOperationTimeout(
+        'cookie-read',
+        COOKIE_OPERATION_TIMEOUT_MS,
+        execute,
+      );
+    } catch (error) {
+      lastError = error;
+
+      if (attempt === 1) {
+        recordSessionDiagnostic({
+          event: 'cookie-read-retry',
+          operation: 'cookie-read',
+          attempt: 1,
+          errorCode:
+            error instanceof SessionError
+              ? error.code
+              : 'COOKIE_READ_FAILED',
+        });
+      }
+    }
+  }
+
+  recordSessionDiagnostic({
+    event: 'native-operation-failed',
+    operation: 'cookie-read',
+    attempt: 2,
+    errorCode: 'COOKIE_READ_FAILED',
+  });
+
+  throw new CookieReadError(lastError);
+}
+
+async function runCookieMutation<T>(
+  operation: Exclude<
+    NativeOperationName,
+    'cookie-read' | 'secure-read' | 'secure-write' | 'secure-delete'
+  >,
+  execute: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await withNativeOperationTimeout(
+      operation,
+      COOKIE_OPERATION_TIMEOUT_MS,
+      execute,
+    );
+  } catch (error) {
+    const wrapped =
+      operation === 'cookie-clear'
+        ? new CookieClearError(error)
+        : new CookieWriteError(error);
+
+    recordSessionDiagnostic({
+      event: 'native-operation-failed',
+      operation,
+      errorCode: wrapped.code,
+    });
+
+    throw wrapped;
   }
 }
 
@@ -156,7 +242,9 @@ Promise<StoredCookie[]> {
   if (Platform.OS === 'android') {
     for (const origin of COOKIE_ORIGINS) {
       const cookies =
-        (await CookieManager.get(origin)) as Cookies;
+        (await readCookiesWithRetry(
+          () => CookieManager.get(origin),
+        )) as Cookies;
 
       addCookieRecord(
         result,
@@ -168,12 +256,17 @@ Promise<StoredCookie[]> {
     return [...result.values()];
   }
 
+  let successfulReads = 0;
+  let lastReadError: unknown;
+
   for (const useWebKit of [false, true]) {
     try {
       const allCookies =
-        (await CookieManager.getAll(
-          useWebKit,
+        (await readCookiesWithRetry(
+          () => CookieManager.getAll(useWebKit),
         )) as Cookies;
+
+      successfulReads += 1;
 
       Object.values(allCookies).forEach((cookie) => {
         if (!isTargetDomain(cookie.domain)) {
@@ -193,27 +286,39 @@ Promise<StoredCookie[]> {
           stored,
         );
       });
-    } catch {
+    } catch (error) {
+      lastReadError = error;
       // Continue with URL-specific extraction.
     }
 
     for (const origin of COOKIE_ORIGINS) {
       try {
         const cookies =
-          (await CookieManager.get(
-            origin,
-            useWebKit,
+          (await readCookiesWithRetry(
+            () => CookieManager.get(
+              origin,
+              useWebKit,
+            ),
           )) as Cookies;
+
+        successfulReads += 1;
 
         addCookieRecord(
           result,
           cookies,
           origin,
         );
-      } catch {
+      } catch (error) {
+        lastReadError = error;
         // Continue collecting from remaining origins.
       }
     }
+  }
+
+  if (successfulReads === 0) {
+    throw lastReadError instanceof CookieReadError
+      ? lastReadError
+      : new CookieReadError(lastReadError);
   }
 
   return [...result.values()];
@@ -243,8 +348,14 @@ export async function clearGlobalCookies():
 Promise<void> {
   if (Platform.OS === 'ios') {
     const results = await Promise.allSettled([
-      CookieManager.clearAll(false),
-      CookieManager.clearAll(true),
+      runCookieMutation(
+        'cookie-clear',
+        () => CookieManager.clearAll(false),
+      ),
+      runCookieMutation(
+        'cookie-clear',
+        () => CookieManager.clearAll(true),
+      ),
     ]);
 
     const allFailed = results.every(
@@ -252,16 +363,20 @@ Promise<void> {
     );
 
     if (allFailed) {
-      throw new Error(
-        'Unable to clear either iOS cookie store.',
-      );
+      throw new CookieClearError();
     }
 
     return;
   }
 
-  await CookieManager.clearAll();
-  await CookieManager.flush();
+  await runCookieMutation(
+    'cookie-clear',
+    () => CookieManager.clearAll(),
+  );
+  await runCookieMutation(
+    'cookie-flush',
+    () => CookieManager.flush(),
+  );
 }
 
 async function setCookie(
@@ -274,15 +389,21 @@ async function setCookie(
 
   if (Platform.OS === 'ios') {
     const results = await Promise.allSettled([
-      CookieManager.set(
-        origin,
-        cookie,
-        false,
+      runCookieMutation(
+        'cookie-write',
+        () => CookieManager.set(
+          origin,
+          cookie,
+          false,
+        ),
       ),
-      CookieManager.set(
-        origin,
-        cookie,
-        true,
+      runCookieMutation(
+        'cookie-write',
+        () => CookieManager.set(
+          origin,
+          cookie,
+          true,
+        ),
       ),
     ]);
 
@@ -292,15 +413,16 @@ async function setCookie(
           result.status === 'rejected',
       )
     ) {
-      throw new Error(
-        `Failed to restore cookie ${cookie.name}`,
-      );
+      throw new CookieWriteError();
     }
 
     return;
   }
 
-  await CookieManager.set(origin, cookie);
+  await runCookieMutation(
+    'cookie-write',
+    () => CookieManager.set(origin, cookie),
+  );
 }
 
 export async function restoreCookieSnapshot(
@@ -324,7 +446,10 @@ export async function restoreCookieSnapshot(
   }
 
   if (Platform.OS === 'android') {
-    await CookieManager.flush();
+    await runCookieMutation(
+      'cookie-flush',
+      () => CookieManager.flush(),
+    );
   }
 
   const verified =
@@ -339,12 +464,8 @@ export async function restoreCookieSnapshot(
 
 export async function isCurrentJarAuthenticated():
 Promise<boolean> {
-  try {
-    const cookies =
-      await extractCurrentCookies();
+  const cookies =
+    await extractCurrentCookies();
 
-    return hasAuthenticationCookies(cookies);
-  } catch {
-    return false;
-  }
+  return hasAuthenticationCookies(cookies);
 }

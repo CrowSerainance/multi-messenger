@@ -4,9 +4,12 @@
   "main": "index.ts",
   "dependencies": {
     "@react-native-cookies/cookies": "^6.2.1",
-    "expo": "~57.0.6",
+    "expo": "~57.0.7",
     "expo-crypto": "~57.0.1",
+    "expo-local-authentication": "~57.0.1",
+    "expo-screen-capture": "~57.0.1",
     "expo-secure-store": "~57.0.1",
+    "expo-splash-screen": "~57.0.4",
     "expo-status-bar": "~57.0.1",
     "react": "19.2.3",
     "react-native": "0.86.0",
@@ -15,6 +18,7 @@
   },
   "devDependencies": {
     "@types/react": "~19.2.2",
+    "patch-package": "^8.0.1",
     "typescript": "~6.0.3"
   },
   "scripts": {
@@ -23,6 +27,7 @@
     "ios": "expo run:ios",
     "web": "expo start --web",
     "prebuild": "expo prebuild",
+    "postinstall": "patch-package",
     "typecheck": "tsc --noEmit"
   },
   "private": true

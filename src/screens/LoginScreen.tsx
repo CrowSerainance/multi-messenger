@@ -28,11 +28,11 @@ import {
 } from '../services/cookieManager';
 
 import {
-  abandonLoginSession,
   beginFreshLoginSession,
 } from '../services/sessionCoordinator';
 
 import {
+  type LoginCancellationDestination,
   useAccountStore,
 } from '../store/accountStore';
 
@@ -43,20 +43,21 @@ import {
 interface Props {
   reauthAccountId?: string;
   onComplete(): void;
-  onCancel(): void;
+  onCancel(
+    destination: LoginCancellationDestination,
+  ): void;
 }
+
+type CancellationState =
+  | 'idle'
+  | 'cancelling'
+  | 'failed';
 
 export function LoginScreen({
   reauthAccountId,
   onComplete,
   onCancel,
 }: Props) {
-  const activeAccountId =
-    useAccountStore(
-      (state) =>
-        state.activeAccountId,
-    );
-
   const createAccountFromLogin =
     useAccountStore(
       (state) =>
@@ -69,10 +70,10 @@ export function LoginScreen({
         state.replaceAccountFromLogin,
     );
 
-  const switchAccount =
+  const cancelLogin =
     useAccountStore(
       (state) =>
-        state.switchAccount,
+        state.cancelLogin,
     );
 
   const [ready, setReady] =
@@ -86,10 +87,26 @@ export function LoginScreen({
   const [busy, setBusy] =
     useState(false);
 
+  const [
+    cancellationState,
+    setCancellationState,
+  ] = useState<CancellationState>(
+    'idle',
+  );
+
   const [error, setError] =
     useState<string | null>(null);
 
   const authHandledRef =
+    useRef(false);
+
+  const authCheckInFlightRef =
+    useRef(false);
+
+  const authCheckPendingRef =
+    useRef(false);
+
+  const cancellingRef =
     useRef(false);
 
   useEffect(() => {
@@ -120,45 +137,82 @@ export function LoginScreen({
 
   const detectLogin =
     useCallback(async () => {
-      if (authHandledRef.current) {
+      if (
+        authHandledRef.current ||
+        cancellingRef.current
+      ) {
         return;
       }
 
-      const authenticated =
-        await isCurrentJarAuthenticated();
-
-      if (!authenticated) {
+      if (authCheckInFlightRef.current) {
+        authCheckPendingRef.current = true;
         return;
       }
 
-      authHandledRef.current = true;
+      authCheckInFlightRef.current = true;
 
-      if (reauthAccountId) {
-        try {
-          setBusy(true);
-
-          await replaceAccountFromLogin(
-            reauthAccountId,
-          );
-
-          onComplete();
-        } catch (caught) {
-          authHandledRef.current =
+      try {
+        do {
+          authCheckPendingRef.current =
             false;
 
+          const authenticated =
+            await isCurrentJarAuthenticated();
+
+          if (cancellingRef.current) {
+            return;
+          }
+
+          if (!authenticated) {
+            continue;
+          }
+
+          setError(null);
+
+          authHandledRef.current = true;
+
+          if (reauthAccountId) {
+            try {
+              setBusy(true);
+
+              await replaceAccountFromLogin(
+                reauthAccountId,
+              );
+
+              onComplete();
+            } catch (caught) {
+              authHandledRef.current =
+                false;
+
+              setError(
+                caught instanceof Error
+                  ? caught.message
+                  : 'Unable to save refreshed session.',
+              );
+            } finally {
+              setBusy(false);
+            }
+
+            return;
+          }
+
+          setShowNameModal(true);
+          return;
+        } while (
+          authCheckPendingRef.current
+        );
+      } catch (caught) {
+        if (!cancellingRef.current) {
           setError(
             caught instanceof Error
               ? caught.message
-              : 'Unable to save refreshed session.',
+              : 'Unable to verify the login session.',
           );
-        } finally {
-          setBusy(false);
         }
-
-        return;
+      } finally {
+        authCheckInFlightRef.current =
+          false;
       }
-
-      setShowNameModal(true);
     }, [
       onComplete,
       reauthAccountId,
@@ -192,21 +246,34 @@ export function LoginScreen({
     };
 
   const cancel = async () => {
+    if (
+      cancellingRef.current ||
+      busy
+    ) {
+      return;
+    }
+
+    cancellingRef.current = true;
+    authHandledRef.current = true;
+    setCancellationState(
+      'cancelling',
+    );
+    setError(null);
+
     try {
-      if (activeAccountId) {
-        await switchAccount(
-          activeAccountId,
-        );
-      } else {
-        await abandonLoginSession();
-      }
-    } catch {
-      // The previous session could not be
-      // restored; leaving the screen is still
-      // the right move, and the jar will be
-      // reset by the next login or switch.
-    } finally {
-      onCancel();
+      const destination =
+        await cancelLogin();
+
+      onCancel(destination);
+    } catch (caught) {
+      cancellingRef.current = false;
+      authHandledRef.current = false;
+      setCancellationState('failed');
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : 'Unable to restore the previous account.',
+      );
     }
   };
 
@@ -243,8 +310,14 @@ export function LoginScreen({
       <View style={styles.toolbar}>
         <Button
           title="Cancel"
-          onPress={cancel}
-          disabled={busy}
+          onPress={() => {
+            void cancel();
+          }}
+          disabled={
+            busy ||
+            cancellationState ===
+              'cancelling'
+          }
         />
 
         <Text style={styles.title}>
@@ -305,11 +378,20 @@ export function LoginScreen({
         }}
       />
 
-      {busy && (
+      {(busy ||
+        cancellationState ===
+          'cancelling') && (
         <View style={styles.busyOverlay}>
           <ActivityIndicator
             size="large"
           />
+
+          {cancellationState ===
+            'cancelling' && (
+            <Text>
+              Restoring previous account…
+            </Text>
+          )}
         </View>
       )}
 

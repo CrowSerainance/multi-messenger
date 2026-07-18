@@ -1,6 +1,21 @@
 import * as Crypto from 'expo-crypto';
 import * as SecureStore from 'expo-secure-store';
 
+import {
+  STORAGE_OPERATION_TIMEOUT_MS,
+  withNativeOperationTimeout,
+} from './nativeOperation';
+
+import {
+  SecureStorageCorruptError,
+  SecureStorageError,
+  type NativeOperationName,
+} from './sessionErrors';
+
+import {
+  recordSessionDiagnostic,
+} from './sessionDiagnostics';
+
 const CHUNK_SIZE = 1500;
 
 interface ChunkManifest {
@@ -13,6 +28,52 @@ const SECURE_OPTIONS = {
   keychainAccessible:
     SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
 };
+
+async function runSecureStoreOperation<T>(
+  operation: Extract<
+    NativeOperationName,
+    'secure-read' | 'secure-write' | 'secure-delete'
+  >,
+  execute: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await withNativeOperationTimeout(
+      operation,
+      STORAGE_OPERATION_TIMEOUT_MS,
+      execute,
+    );
+  } catch (error) {
+    const wrapped = new SecureStorageError(error);
+
+    recordSessionDiagnostic({
+      event: 'native-operation-failed',
+      operation,
+      errorCode: wrapped.code,
+    });
+
+    throw wrapped;
+  }
+}
+
+function parseManifest(raw: string): ChunkManifest {
+  try {
+    const manifest = JSON.parse(raw) as Partial<ChunkManifest>;
+
+    if (
+      manifest.version !== 1 ||
+      typeof manifest.generation !== 'string' ||
+      manifest.generation.length === 0 ||
+      !Number.isSafeInteger(manifest.chunkCount) ||
+      (manifest.chunkCount ?? 0) < 1
+    ) {
+      throw new Error('Invalid manifest shape.');
+    }
+
+    return manifest as ChunkManifest;
+  } catch (error) {
+    throw new SecureStorageCorruptError(error);
+  }
+}
 
 function manifestKey(baseKey: string): string {
   return `${baseKey}.manifest`;
@@ -29,16 +90,19 @@ function chunkKey(
 async function readManifest(
   baseKey: string,
 ): Promise<ChunkManifest | null> {
-  const raw = await SecureStore.getItemAsync(
-    manifestKey(baseKey),
-    SECURE_OPTIONS,
+  const raw = await runSecureStoreOperation(
+    'secure-read',
+    () => SecureStore.getItemAsync(
+      manifestKey(baseKey),
+      SECURE_OPTIONS,
+    ),
   );
 
   if (!raw) {
     return null;
   }
 
-  return JSON.parse(raw) as ChunkManifest;
+  return parseManifest(raw);
 }
 
 export async function secureWriteJson<T>(
@@ -66,10 +130,13 @@ export async function secureWriteJson<T>(
 
   await Promise.all(
     chunks.map((chunk, index) =>
-      SecureStore.setItemAsync(
-        chunkKey(baseKey, generation, index),
-        chunk,
-        SECURE_OPTIONS,
+      runSecureStoreOperation(
+        'secure-write',
+        () => SecureStore.setItemAsync(
+          chunkKey(baseKey, generation, index),
+          chunk,
+          SECURE_OPTIONS,
+        ),
       ),
     ),
   );
@@ -80,10 +147,13 @@ export async function secureWriteJson<T>(
     chunkCount: chunks.length,
   };
 
-  await SecureStore.setItemAsync(
-    manifestKey(baseKey),
-    JSON.stringify(newManifest),
-    SECURE_OPTIONS,
+  await runSecureStoreOperation(
+    'secure-write',
+    () => SecureStore.setItemAsync(
+      manifestKey(baseKey),
+      JSON.stringify(newManifest),
+      SECURE_OPTIONS,
+    ),
   );
 
   if (
@@ -94,13 +164,16 @@ export async function secureWriteJson<T>(
       Array.from(
         { length: oldManifest.chunkCount },
         (_, index) =>
-          SecureStore.deleteItemAsync(
-            chunkKey(
-              baseKey,
-              oldManifest.generation,
-              index,
+          runSecureStoreOperation(
+            'secure-delete',
+            () => SecureStore.deleteItemAsync(
+              chunkKey(
+                baseKey,
+                oldManifest.generation,
+                index,
+              ),
+              SECURE_OPTIONS,
             ),
-            SECURE_OPTIONS,
           ),
       ),
     );
@@ -120,25 +193,31 @@ export async function secureReadJson<T>(
     Array.from(
       { length: manifest.chunkCount },
       (_, index) =>
-        SecureStore.getItemAsync(
-          chunkKey(
-            baseKey,
-            manifest.generation,
-            index,
+        runSecureStoreOperation(
+          'secure-read',
+          () => SecureStore.getItemAsync(
+            chunkKey(
+              baseKey,
+              manifest.generation,
+              index,
+            ),
+            SECURE_OPTIONS,
           ),
-          SECURE_OPTIONS,
         ),
     ),
   );
 
   if (chunks.some((chunk) => chunk === null)) {
-    throw new Error(
-      `SecureStore value is incomplete: ${baseKey}`,
-    );
+    throw new SecureStorageCorruptError();
   }
 
   const serialized = chunks.join('');
-  return JSON.parse(serialized) as T;
+
+  try {
+    return JSON.parse(serialized) as T;
+  } catch (error) {
+    throw new SecureStorageCorruptError(error);
+  }
 }
 
 export async function secureDeleteJson(
@@ -151,20 +230,26 @@ export async function secureDeleteJson(
       Array.from(
         { length: manifest.chunkCount },
         (_, index) =>
-          SecureStore.deleteItemAsync(
-            chunkKey(
-              baseKey,
-              manifest.generation,
-              index,
+          runSecureStoreOperation(
+            'secure-delete',
+            () => SecureStore.deleteItemAsync(
+              chunkKey(
+                baseKey,
+                manifest.generation,
+                index,
+              ),
+              SECURE_OPTIONS,
             ),
-            SECURE_OPTIONS,
           ),
       ),
     );
   }
 
-  await SecureStore.deleteItemAsync(
-    manifestKey(baseKey),
-    SECURE_OPTIONS,
+  await runSecureStoreOperation(
+    'secure-delete',
+    () => SecureStore.deleteItemAsync(
+      manifestKey(baseKey),
+      SECURE_OPTIONS,
+    ),
   );
 }

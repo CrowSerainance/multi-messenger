@@ -7,7 +7,9 @@ import type {
 } from '../types/session';
 
 import {
+  abandonLoginSession,
   claimLoginSession,
+  forceClearGlobalSession,
   persistOwnedSession,
   releaseOwnedSession,
   switchGlobalSession,
@@ -29,9 +31,24 @@ import {
 const ACCOUNT_INDEX_KEY =
   'messenger.accounts.index.v1';
 
+export type LoginCancellationDestination =
+  | 'home'
+  | 'messenger';
+
+export type SessionRefreshResult =
+  | 'saved'
+  | 'not-owner'
+  | 'unauthenticated'
+  | 'no-active';
+
+export type AccountMoveDirection =
+  | 'up'
+  | 'down';
+
 interface AccountStore {
   accounts: Account[];
   activeAccountId: string | null;
+  defaultAccountId: string | null;
   hydrated: boolean;
   isSwitching: boolean;
   webViewEpoch: number;
@@ -47,16 +64,35 @@ interface AccountStore {
     accountId: string,
   ): Promise<void>;
 
+  cancelLogin():
+  Promise<LoginCancellationDestination>;
+
   switchAccount(
     accountId: string,
   ): Promise<void>;
 
   persistActiveSession():
-  Promise<void>;
+  Promise<SessionRefreshResult>;
 
   markExpired(
     accountId: string,
   ): Promise<void>;
+
+  renameAccount(
+    accountId: string,
+    name: string,
+  ): Promise<void>;
+
+  moveAccount(
+    accountId: string,
+    direction: AccountMoveDirection,
+  ): Promise<void>;
+
+  setDefaultAccount(
+    accountId: string | null,
+  ): Promise<void>;
+
+  forceClearCookies(): Promise<void>;
 
   removeAccount(
     accountId: string,
@@ -66,10 +102,12 @@ interface AccountStore {
 async function saveIndex(
   accounts: Account[],
   activeAccountId: string | null,
+  defaultAccountId: string | null,
 ): Promise<void> {
   const index: AccountIndex = {
     accounts,
     activeAccountId,
+    defaultAccountId,
   };
 
   await secureWriteJson(
@@ -82,6 +120,7 @@ export const useAccountStore =
   create<AccountStore>((set, get) => ({
     accounts: [],
     activeAccountId: null,
+    defaultAccountId: null,
     hydrated: false,
     isSwitching: false,
     webViewEpoch: 0,
@@ -102,19 +141,32 @@ export const useAccountStore =
           return;
         }
 
-        const activeExists =
-          saved.activeAccountId === null ||
+        const accountExists = (
+          accountId:
+            | string
+            | null
+            | undefined,
+        ) =>
+          accountId != null &&
           saved.accounts.some(
             (account) =>
-              account.id ===
-              saved.activeAccountId,
+              account.id === accountId,
           );
 
         set({
           accounts: saved.accounts,
           activeAccountId:
-            activeExists
+            accountExists(
+              saved.activeAccountId,
+            )
               ? saved.activeAccountId
+              : null,
+          defaultAccountId:
+            accountExists(
+              saved.defaultAccountId,
+            )
+              ? saved.defaultAccountId ??
+                null
               : null,
           hydrated: true,
         });
@@ -151,6 +203,7 @@ export const useAccountStore =
         createdAt: now,
         updatedAt: now,
         status: 'ready',
+        lastRefreshAt: now,
       };
 
       const nextAccounts = [
@@ -162,6 +215,7 @@ export const useAccountStore =
         await saveIndex(
           nextAccounts,
           accountId,
+          get().defaultAccountId,
         );
       } catch (error) {
         await deleteSessionSnapshot(
@@ -187,13 +241,16 @@ export const useAccountStore =
     ) {
       await claimLoginSession(accountId);
 
+      const now = Date.now();
+
       const nextAccounts =
         get().accounts.map((account) =>
           account.id === accountId
             ? {
                 ...account,
                 status: 'ready' as const,
-                updatedAt: Date.now(),
+                updatedAt: now,
+                lastRefreshAt: now,
               }
             : account,
         );
@@ -201,6 +258,7 @@ export const useAccountStore =
       await saveIndex(
         nextAccounts,
         accountId,
+        get().defaultAccountId,
       );
 
       set((state) => ({
@@ -210,6 +268,22 @@ export const useAccountStore =
           state.webViewEpoch + 1,
         error: null,
       }));
+    },
+
+    async cancelLogin() {
+      const accountId =
+        get().activeAccountId;
+
+      if (!accountId) {
+        await abandonLoginSession();
+        return 'home';
+      }
+
+      await get().switchAccount(
+        accountId,
+      );
+
+      return 'messenger';
     },
 
     async switchAccount(accountId) {
@@ -255,6 +329,7 @@ export const useAccountStore =
         await saveIndex(
           nextAccounts,
           accountId,
+          get().defaultAccountId,
         );
       } catch (error) {
         if (
@@ -278,6 +353,7 @@ export const useAccountStore =
           await saveIndex(
             nextAccounts,
             get().activeAccountId,
+            get().defaultAccountId,
           );
         }
 
@@ -294,13 +370,36 @@ export const useAccountStore =
         get().activeAccountId;
 
       if (!accountId) {
-        return;
+        return 'no-active';
       }
 
       const result =
         await persistOwnedSession(
           accountId,
         );
+
+      if (result === 'saved') {
+        const nextAccounts =
+          get().accounts.map((account) =>
+            account.id === accountId
+              ? {
+                  ...account,
+                  lastRefreshAt:
+                    Date.now(),
+                }
+              : account,
+          );
+
+        set({
+          accounts: nextAccounts,
+        });
+
+        await saveIndex(
+          nextAccounts,
+          get().activeAccountId,
+          get().defaultAccountId,
+        );
+      }
 
       if (
         result === 'unauthenticated'
@@ -309,6 +408,8 @@ export const useAccountStore =
           accountId,
         );
       }
+
+      return result;
     },
 
     async markExpired(accountId) {
@@ -330,6 +431,123 @@ export const useAccountStore =
       await saveIndex(
         nextAccounts,
         get().activeAccountId,
+        get().defaultAccountId,
+      );
+    },
+
+    async renameAccount(
+      accountId,
+      name,
+    ) {
+      const cleanName = name.trim();
+
+      if (!cleanName) {
+        throw new Error(
+          'Account name is required.',
+        );
+      }
+
+      const nextAccounts =
+        get().accounts.map((account) =>
+          account.id === accountId
+            ? {
+                ...account,
+                name: cleanName,
+                updatedAt: Date.now(),
+              }
+            : account,
+        );
+
+      await saveIndex(
+        nextAccounts,
+        get().activeAccountId,
+        get().defaultAccountId,
+      );
+
+      set({
+        accounts: nextAccounts,
+      });
+    },
+
+    async moveAccount(
+      accountId,
+      direction,
+    ) {
+      const accounts = [
+        ...get().accounts,
+      ];
+
+      const index = accounts.findIndex(
+        (account) =>
+          account.id === accountId,
+      );
+
+      const targetIndex =
+        direction === 'up'
+          ? index - 1
+          : index + 1;
+
+      if (
+        index < 0 ||
+        targetIndex < 0 ||
+        targetIndex >= accounts.length
+      ) {
+        return;
+      }
+
+      const moved = accounts[index];
+      accounts[index] =
+        accounts[targetIndex];
+      accounts[targetIndex] = moved;
+
+      await saveIndex(
+        accounts,
+        get().activeAccountId,
+        get().defaultAccountId,
+      );
+
+      set({
+        accounts,
+      });
+    },
+
+    async setDefaultAccount(accountId) {
+      if (
+        accountId !== null &&
+        !get().accounts.some(
+          (account) =>
+            account.id === accountId,
+        )
+      ) {
+        throw new Error(
+          'Account does not exist.',
+        );
+      }
+
+      await saveIndex(
+        get().accounts,
+        get().activeAccountId,
+        accountId,
+      );
+
+      set({
+        defaultAccountId: accountId,
+      });
+    },
+
+    async forceClearCookies() {
+      await forceClearGlobalSession();
+
+      set((state) => ({
+        activeAccountId: null,
+        webViewEpoch:
+          state.webViewEpoch + 1,
+      }));
+
+      await saveIndex(
+        get().accounts,
+        null,
+        get().defaultAccountId,
       );
     },
 
@@ -347,6 +565,13 @@ export const useAccountStore =
         nextActive = null;
       }
 
+      let nextDefault =
+        get().defaultAccountId;
+
+      if (nextDefault === accountId) {
+        nextDefault = null;
+      }
+
       await releaseOwnedSession(
         accountId,
       );
@@ -358,11 +583,13 @@ export const useAccountStore =
       await saveIndex(
         remaining,
         nextActive,
+        nextDefault,
       );
 
       set({
         accounts: remaining,
         activeAccountId: nextActive,
+        defaultAccountId: nextDefault,
       });
     },
   }));

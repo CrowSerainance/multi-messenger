@@ -27,12 +27,14 @@ interface Props {
     accountId: string,
   ): void;
   onBackToAccounts(): void;
+  onOpenDiagnostics(): void;
 }
 
 export function MessengerScreen({
   onAddAccount,
   onReauthenticate,
   onBackToAccounts,
+  onOpenDiagnostics,
 }: Props) {
   const [
     switcherVisible,
@@ -176,6 +178,7 @@ export function MessengerScreen({
           title="+"
           onPress={onAddAccount}
         />
+
       </View>
 
       <MessengerWebView
@@ -273,6 +276,14 @@ export function MessengerScreen({
                 );
 
                 onAddAccount();
+              }}
+            />
+
+            <Button
+              title="Session Diagnostics"
+              onPress={() => {
+                setSwitcherVisible(false);
+                onOpenDiagnostics();
               }}
             />
 

@@ -23,11 +23,17 @@ interface Props {
     accountId: string,
   ): void;
   onAddAccount(): void;
+  onManageAccounts(): void;
+  onOpenSecurity(): void;
+  onOpenPrivacy(): void;
 }
 
 export function HomeScreen({
   onSelectAccount,
   onAddAccount,
+  onManageAccounts,
+  onOpenSecurity,
+  onOpenPrivacy,
 }: Props) {
   const accounts =
     useAccountStore(
@@ -39,6 +45,12 @@ export function HomeScreen({
     useAccountStore(
       (state) =>
         state.removeAccount,
+    );
+
+  const defaultAccountId =
+    useAccountStore(
+      (state) =>
+        state.defaultAccountId,
     );
 
   const confirmDelete = (
@@ -101,9 +113,18 @@ export function HomeScreen({
             }
           >
             <View>
-              <Text style={styles.name}>
-                {item.name}
-              </Text>
+              <View style={styles.nameRow}>
+                <Text style={styles.name}>
+                  {item.name}
+                </Text>
+
+                {item.id ===
+                  defaultAccountId && (
+                  <Text style={styles.defaultBadge}>
+                    Default
+                  </Text>
+                )}
+              </View>
 
               <Text
                 style={
@@ -125,10 +146,27 @@ export function HomeScreen({
         )}
       />
 
-      <Button
-        title="Add Account"
-        onPress={onAddAccount}
-      />
+      <View style={styles.footer}>
+        <Button
+          title="Add Account"
+          onPress={onAddAccount}
+        />
+
+        <Button
+          title="Manage Accounts"
+          onPress={onManageAccounts}
+        />
+
+        <Button
+          title="Security"
+          onPress={onOpenSecurity}
+        />
+
+        <Button
+          title="Privacy"
+          onPress={onOpenPrivacy}
+        />
+      </View>
     </View>
   );
 }
@@ -168,9 +206,24 @@ const styles =
       borderRadius: 12,
     },
 
+    nameRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
+
     name: {
       fontSize: 18,
       fontWeight: '700',
+    },
+
+    defaultBadge: {
+      color: '#1a6b1a',
+      fontWeight: '700',
+    },
+
+    footer: {
+      gap: 8,
     },
 
     status: {

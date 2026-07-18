@@ -15,6 +15,9 @@ import {
 interface Props {
   visible: boolean;
   busy: boolean;
+  title?: string;
+  submitLabel?: string;
+  initialName?: string;
   onSubmit(name: string): void;
   onCancel(): void;
 }
@@ -22,17 +25,20 @@ interface Props {
 export function NameAccountModal({
   visible,
   busy,
+  title = 'Name this account',
+  submitLabel = 'Save Account',
+  initialName = '',
   onSubmit,
   onCancel,
 }: Props) {
   const [name, setName] =
-    useState('');
+    useState(initialName);
 
   useEffect(() => {
     if (visible) {
-      setName('');
+      setName(initialName);
     }
-  }, [visible]);
+  }, [visible, initialName]);
 
   return (
     <Modal
@@ -44,7 +50,7 @@ export function NameAccountModal({
       <View style={styles.backdrop}>
         <View style={styles.card}>
           <Text style={styles.title}>
-            Name this account
+            {title}
           </Text>
 
           <TextInput
@@ -60,7 +66,7 @@ export function NameAccountModal({
             title={
               busy
                 ? 'Saving...'
-                : 'Save Account'
+                : submitLabel
             }
             disabled={
               busy ||

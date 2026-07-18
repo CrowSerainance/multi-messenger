@@ -11,6 +11,7 @@ export interface Account {
   createdAt: number;
   updatedAt: number;
   status: AccountStatus;
+  lastRefreshAt?: number;
 }
 
 export interface StoredCookie extends Cookie {
@@ -27,4 +28,5 @@ export interface CookieSnapshot {
 export interface AccountIndex {
   accounts: Account[];
   activeAccountId: string | null;
+  defaultAccountId?: string | null;
 }
