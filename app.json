@@ -31,6 +31,11 @@
     ],
     "android": {
       "package": "com.example.messengersessions",
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
+      ],
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -43,7 +48,9 @@
       "bundleIdentifier": "com.example.messengersessions",
       "supportsTablet": true,
       "infoPlist": {
-        "NSFaceIDUsageDescription": "Allow Messenger Sessions to use Face ID for app unlock."
+        "NSFaceIDUsageDescription": "Allow Messenger Sessions to use Face ID for app unlock.",
+        "NSCameraUsageDescription": "Allow Messenger Sessions to use the camera for Messenger video calls and photo capture.",
+        "NSMicrophoneUsageDescription": "Allow Messenger Sessions to use the microphone for Messenger calls and voice messages."
       },
       "config": {
         "usesNonExemptEncryption": false

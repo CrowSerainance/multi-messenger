@@ -38,6 +38,12 @@ export function isLoginUrl(url: string): boolean {
   );
 }
 
+export function isCallUrl(url: string): boolean {
+  return /\/(call|groupcall|rooms?)([/?#]|$)/i.test(
+    url,
+  );
+}
+
 const IN_APP_HOSTS = [
   'facebook.com',
   'messenger.com',

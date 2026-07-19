@@ -10,6 +10,8 @@ import {
   type AppStateStatus,
   BackHandler,
   Linking,
+  PermissionsAndroid,
+  Platform,
   StyleSheet,
   View,
 } from 'react-native';
@@ -19,6 +21,7 @@ import {
 } from 'react-native-webview';
 
 import {
+  isCallUrl,
   isHttpUrl,
   isInAppUrl,
   isLoginUrl,
@@ -125,6 +128,44 @@ export function MessengerWebView({
     };
   }, []);
 
+  const mediaPermissionsRequested =
+    useRef(false);
+
+  // Android runtime camera/microphone
+  // permissions are requested lazily, the
+  // first time the user opens a call or room,
+  // so the app never prompts on plain chat
+  // usage. The WebView can only grant a page's
+  // capture request when the app itself holds
+  // these permissions.
+  const ensureMediaPermissions =
+    useCallback(async () => {
+      if (
+        Platform.OS !== 'android' ||
+        mediaPermissionsRequested.current
+      ) {
+        return;
+      }
+
+      mediaPermissionsRequested.current =
+        true;
+
+      try {
+        await PermissionsAndroid.requestMultiple(
+          [
+            PermissionsAndroid.PERMISSIONS
+              .CAMERA,
+            PermissionsAndroid.PERMISSIONS
+              .RECORD_AUDIO,
+          ],
+        );
+      } catch {
+        // Denied permissions surface inside the
+        // page; the user can grant them later
+        // from system settings.
+      }
+    }, []);
+
   const persistAfterLoad =
     useCallback(() => {
       const now = Date.now();
@@ -197,6 +238,23 @@ export function MessengerWebView({
       javaScriptEnabled
       pullToRefreshEnabled
       allowsBackForwardNavigationGestures
+      allowsInlineMediaPlayback
+      mediaPlaybackRequiresUserAction={
+        false
+      }
+      mediaCapturePermissionGrantType="grantIfSameHostElsePrompt"
+      onFileDownload={({
+        nativeEvent,
+      }) => {
+        // iOS WKWebView cannot download
+        // directly; hand the file URL to the
+        // system so Safari/Files handles it.
+        Linking.openURL(
+          nativeEvent.downloadUrl,
+        ).catch(() => {
+          // Nothing can handle the URL.
+        });
+      }}
       startInLoadingState
       renderLoading={() => (
         <View style={styles.loading}>
@@ -254,6 +312,10 @@ export function MessengerWebView({
       ) => {
         canGoBackRef.current =
           navState.canGoBack;
+
+        if (isCallUrl(navState.url)) {
+          void ensureMediaPermissions();
+        }
 
         void detectExpiredSession(
           navState.url,
