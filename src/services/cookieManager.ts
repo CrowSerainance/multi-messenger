@@ -2,10 +2,14 @@ import {
   Platform,
 } from 'react-native';
 
-import CookieManager, {
+import {
   type Cookie,
   type Cookies,
 } from '@react-native-cookies/cookies';
+
+import {
+  cookieBackend as CookieManager,
+} from './cookieBackend';
 
 import {
   COOKIE_ORIGINS,
