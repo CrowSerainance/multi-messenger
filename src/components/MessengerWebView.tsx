@@ -1,6 +1,7 @@
 import React, {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
 } from 'react';
 
@@ -36,6 +37,11 @@ import {
 import {
   useAccountStore,
 } from '../store/accountStore';
+
+import {
+  buildStorageGuardScript,
+  STORAGE_WIPED_MESSAGE,
+} from '../services/webStorageIsolation';
 
 interface Props {
   accountId: string;
@@ -130,6 +136,26 @@ export function MessengerWebView({
 
   const mediaPermissionsRequested =
     useRef(false);
+
+  const reloadedAfterWipeRef =
+    useRef(false);
+
+  // The component instance survives account
+  // switches (only the keyed WebView remounts),
+  // so the once-per-mount reload guard must be
+  // reset whenever a new WebView is mounted.
+  useEffect(() => {
+    reloadedAfterWipeRef.current = false;
+  }, [accountId, epoch]);
+
+  const storageGuardScript =
+    useMemo(
+      () =>
+        buildStorageGuardScript(
+          accountId,
+        ),
+      [accountId],
+    );
 
   // Android runtime camera/microphone
   // permissions are requested lazily, the
@@ -238,6 +264,25 @@ export function MessengerWebView({
       javaScriptEnabled
       pullToRefreshEnabled
       allowsBackForwardNavigationGestures
+      injectedJavaScriptBeforeContentLoaded={
+        storageGuardScript
+      }
+      onMessage={(event) => {
+        // After a cross-account wipe, reload
+        // once so the page restarts against the
+        // cleaned storage profile (and any
+        // unregistered service worker is gone).
+        if (
+          event.nativeEvent.data ===
+            STORAGE_WIPED_MESSAGE &&
+          !reloadedAfterWipeRef.current
+        ) {
+          reloadedAfterWipeRef.current =
+            true;
+
+          webViewRef.current?.reload();
+        }
+      }}
       allowsInlineMediaPlayback
       mediaPlaybackRequiresUserAction={
         false

@@ -40,6 +40,20 @@ import {
   NameAccountModal,
 } from '../components/NameAccountModal';
 
+import {
+  buildStorageClaimScript,
+  buildStorageGuardScript,
+  LOGIN_STORAGE_OWNER,
+} from '../services/webStorageIsolation';
+
+// Wipes the previous owner's web storage as
+// soon as the login page loads, so a new login
+// never sees another account's site data.
+const LOGIN_STORAGE_GUARD =
+  buildStorageGuardScript(
+    LOGIN_STORAGE_OWNER,
+  );
+
 interface Props {
   reauthAccountId?: string;
   onComplete(): void;
@@ -108,6 +122,24 @@ export function LoginScreen({
 
   const cancellingRef =
     useRef(false);
+
+  const webViewRef =
+    useRef<WebView>(null);
+
+  // Stamps the freshly created login storage
+  // with its new owner so the Messenger WebView
+  // does not immediately wipe it again. If the
+  // injection is lost to unmount timing, the
+  // fallback is one redundant storage wipe on
+  // first mount — never a leak.
+  const claimStorageForAccount =
+    (accountId: string) => {
+      webViewRef.current?.injectJavaScript(
+        buildStorageClaimScript(
+          accountId,
+        ),
+      );
+    };
 
   useEffect(() => {
     let mounted = true;
@@ -179,6 +211,10 @@ export function LoginScreen({
                 reauthAccountId,
               );
 
+              claimStorageForAccount(
+                reauthAccountId,
+              );
+
               onComplete();
             } catch (caught) {
               authHandledRef.current =
@@ -225,8 +261,13 @@ export function LoginScreen({
         setBusy(true);
         setError(null);
 
-        await createAccountFromLogin(
-          name,
+        const accountId =
+          await createAccountFromLogin(
+            name,
+          );
+
+        claimStorageForAccount(
+          accountId,
         );
 
         setShowNameModal(false);
@@ -334,6 +375,7 @@ export function LoginScreen({
       )}
 
       <WebView
+        ref={webViewRef}
         source={{
           uri: MESSENGER_LOGIN_URL,
         }}
@@ -344,6 +386,9 @@ export function LoginScreen({
         thirdPartyCookiesEnabled
         domStorageEnabled
         javaScriptEnabled
+        injectedJavaScriptBeforeContentLoaded={
+          LOGIN_STORAGE_GUARD
+        }
         startInLoadingState
         renderLoading={() => (
           <View style={styles.center}>
