@@ -15,8 +15,16 @@ import {
 } from 'react-native';
 
 import {
+  SafeAreaProvider,
+} from 'react-native-safe-area-context';
+
+import {
   SensitiveScreen,
 } from './src/components/SensitiveScreen';
+
+import {
+  colors,
+} from './src/ui/theme';
 
 import {
   HomeScreen,
@@ -81,10 +89,15 @@ type Route =
     }
   | {
       name: 'security';
+      from: 'home' | 'manage';
     }
   | {
       name: 'privacy';
-      from: 'security' | 'manage' | 'home';
+      from:
+        | 'security-home'
+        | 'security-manage'
+        | 'manage'
+        | 'home';
     }
   | {
       name: 'login';
@@ -252,39 +265,45 @@ export default function App() {
 
   if (!lockReady) {
     return (
-      <View style={styles.loading}>
-        <ActivityIndicator
-          size="large"
-        />
-      </View>
+      <SafeAreaProvider>
+        <View style={styles.loading}>
+          <ActivityIndicator
+            size="large"
+            color={colors.primary}
+          />
+        </View>
+      </SafeAreaProvider>
     );
   }
 
   if (!lockConfig) {
     return (
-      <>
+      <SafeAreaProvider>
         <StatusBar barStyle="dark-content" />
         <SetupPinScreen />
-      </>
+      </SafeAreaProvider>
     );
   }
 
   if (!unlocked) {
     return (
-      <>
+      <SafeAreaProvider>
         <StatusBar barStyle="dark-content" />
         <UnlockScreen />
-      </>
+      </SafeAreaProvider>
     );
   }
 
   if (!hydrated || resuming) {
     return (
-      <View style={styles.loading}>
-        <ActivityIndicator
-          size="large"
-        />
-      </View>
+      <SafeAreaProvider>
+        <View style={styles.loading}>
+          <ActivityIndicator
+            size="large"
+            color={colors.primary}
+          />
+        </View>
+      </SafeAreaProvider>
     );
   }
 
@@ -352,6 +371,7 @@ export default function App() {
           onOpenSecurity={() => {
             setRoute({
               name: 'security',
+              from: 'home',
             });
           }}
 
@@ -377,6 +397,7 @@ export default function App() {
           onOpenSecurity={() => {
             setRoute({
               name: 'security',
+              from: 'manage',
             });
           }}
 
@@ -394,15 +415,20 @@ export default function App() {
       content = (
         <SecuritySettingsScreen
           onBack={() => {
-            setRoute({
-              name: 'manage',
-            });
+            setRoute(
+              route.from === 'home'
+                ? { name: 'home' }
+                : { name: 'manage' },
+            );
           }}
 
           onOpenPrivacy={() => {
             setRoute({
               name: 'privacy',
-              from: 'security',
+              from:
+                route.from === 'home'
+                  ? 'security-home'
+                  : 'security-manage',
             });
           }}
         />
@@ -413,13 +439,26 @@ export default function App() {
       content = (
         <PrivacyPolicyScreen
           onBack={() => {
-            setRoute(
-              route.from === 'home'
-                ? { name: 'home' }
-                : route.from === 'manage'
-                  ? { name: 'manage' }
-                  : { name: 'security' },
-            );
+            switch (route.from) {
+              case 'home':
+                setRoute({ name: 'home' });
+                break;
+              case 'manage':
+                setRoute({ name: 'manage' });
+                break;
+              case 'security-home':
+                setRoute({
+                  name: 'security',
+                  from: 'home',
+                });
+                break;
+              case 'security-manage':
+                setRoute({
+                  name: 'security',
+                  from: 'manage',
+                });
+                break;
+            }
           }}
         />
       );
@@ -503,7 +542,7 @@ export default function App() {
   }
 
   return (
-    <>
+    <SafeAreaProvider>
       <StatusBar
         barStyle="dark-content"
       />
@@ -511,7 +550,7 @@ export default function App() {
       <SensitiveScreen>
         {content}
       </SensitiveScreen>
-    </>
+    </SafeAreaProvider>
   );
 }
 
@@ -521,5 +560,6 @@ const styles =
       flex: 1,
       alignItems: 'center',
       justifyContent: 'center',
+      backgroundColor: colors.background,
     },
   });

@@ -5,13 +5,15 @@ import React, {
 
 import {
   ActivityIndicator,
-  Button,
   StyleSheet,
   Switch,
   Text,
-  TextInput,
   View,
 } from 'react-native';
+
+import {
+  useSafeAreaInsets,
+} from 'react-native-safe-area-context';
 
 import {
   pinValidationMessage,
@@ -25,16 +27,32 @@ import {
   SensitiveScreen,
 } from '../components/SensitiveScreen';
 
+import {
+  AppButton,
+} from '../ui/AppButton';
+
+import {
+  AppTextField,
+} from '../ui/AppTextField';
+
+import {
+  colors,
+  radius,
+  space,
+} from '../ui/theme';
+
 interface Props {
   title?: string;
   subtitle?: string;
 }
 
 export function SetupPinScreen({
-  title = 'Protect this app',
+  title = 'Protect your sessions',
   subtitle =
     'Create a PIN before saved Messenger sessions can be opened. Biometrics are optional.',
 }: Props) {
+  const insets = useSafeAreaInsets();
+
   const biometric =
     useAppLockStore(
       (state) => state.biometric,
@@ -106,9 +124,23 @@ export function SetupPinScreen({
 
   return (
     <SensitiveScreen
-      style={styles.container}
+      style={[
+        styles.container,
+        {
+          paddingTop:
+            Math.max(insets.top, space.sm) +
+            40,
+          paddingBottom:
+            Math.max(insets.bottom, space.sm) +
+            space.xl,
+        },
+      ]}
       captureKey="setup-pin"
     >
+      <Text style={styles.kicker}>
+        First-time setup
+      </Text>
+
       <Text style={styles.title}>
         {title}
       </Text>
@@ -117,26 +149,30 @@ export function SetupPinScreen({
         {subtitle}
       </Text>
 
-      <TextInput
+      <AppTextField
+        label="Create PIN"
         value={pin}
         onChangeText={setPin}
-        placeholder="Create PIN (4-8 digits)"
+        placeholder="4–8 digits"
         keyboardType="number-pad"
         secureTextEntry
         maxLength={8}
         editable={!busy}
-        style={styles.input}
+        style={styles.pinInput}
+        hint="You’ll need this every time the app opens."
       />
 
-      <TextInput
+      <AppTextField
+        label="Confirm PIN"
         value={confirmPin}
         onChangeText={setConfirmPin}
-        placeholder="Confirm PIN"
+        placeholder="Repeat PIN"
         keyboardType="number-pad"
         secureTextEntry
         maxLength={8}
         editable={!busy}
-        style={styles.input}
+        style={styles.pinInput}
+        error={error}
       />
 
       <View style={styles.row}>
@@ -147,7 +183,7 @@ export function SetupPinScreen({
 
           <Text style={styles.rowHint}>
             {biometric.usable
-              ? 'Use fingerprint or face after PIN setup.'
+              ? 'Use fingerprint or face after setup.'
               : 'No enrolled biometrics on this device.'}
           </Text>
         </View>
@@ -161,20 +197,26 @@ export function SetupPinScreen({
           disabled={
             busy || !biometric.usable
           }
+          trackColor={{
+            false: colors.borderStrong,
+            true: '#93C5FD',
+          }}
+          thumbColor={
+            enableBiometric && biometric.usable
+              ? colors.primary
+              : '#F8FAFC'
+          }
         />
       </View>
 
-      {error && (
-        <Text style={styles.error}>
-          {error}
-        </Text>
-      )}
-
       {busy ? (
-        <ActivityIndicator size="large" />
+        <ActivityIndicator
+          size="large"
+          color={colors.primary}
+        />
       ) : (
-        <Button
-          title="Save PIN"
+        <AppButton
+          title="Save PIN & Continue"
           onPress={() => {
             void submit();
           }}
@@ -191,38 +233,44 @@ export function SetupPinScreen({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 24,
-    paddingTop: 72,
-    backgroundColor: 'white',
-    gap: 14,
+    paddingHorizontal: space.xl,
+    backgroundColor: colors.background,
+    gap: space.md,
+  },
+
+  kicker: {
+    color: colors.primary,
+    fontWeight: '700',
+    fontSize: 14,
   },
 
   title: {
-    fontSize: 26,
+    fontSize: 28,
     fontWeight: '800',
+    color: colors.text,
   },
 
   subtitle: {
-    color: '#555',
-    marginBottom: 8,
-    lineHeight: 20,
+    color: colors.textMuted,
+    marginBottom: space.sm,
+    lineHeight: 22,
+    fontSize: 15,
   },
 
-  input: {
-    borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 18,
+  pinInput: {
     letterSpacing: 4,
+    fontSize: 18,
   },
 
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    paddingVertical: 8,
+    gap: space.md,
+    padding: space.lg,
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
 
   rowText: {
@@ -233,14 +281,12 @@ const styles = StyleSheet.create({
   rowTitle: {
     fontWeight: '700',
     fontSize: 16,
+    color: colors.text,
   },
 
   rowHint: {
-    color: '#666',
+    color: colors.textMuted,
     fontSize: 13,
-  },
-
-  error: {
-    color: '#b00020',
+    lineHeight: 18,
   },
 });

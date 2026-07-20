@@ -7,7 +7,6 @@ import React, {
 
 import {
   ActivityIndicator,
-  Button,
   StyleSheet,
   Text,
   View,
@@ -39,6 +38,19 @@ import {
 import {
   NameAccountModal,
 } from '../components/NameAccountModal';
+
+import {
+  AppButton,
+} from '../ui/AppButton';
+
+import {
+  ScreenHeader,
+} from '../ui/ScreenHeader';
+
+import {
+  colors,
+  space,
+} from '../ui/theme';
 
 import {
   buildStorageClaimScript,
@@ -332,7 +344,7 @@ export function LoginScreen({
               {error}
             </Text>
 
-            <Button
+            <AppButton
               title="Go Back"
               onPress={() => {
                 void cancel();
@@ -340,7 +352,10 @@ export function LoginScreen({
             />
           </>
         ) : (
-          <ActivityIndicator size="large" />
+          <ActivityIndicator
+            size="large"
+            color={colors.primary}
+          />
         )}
       </View>
     );
@@ -348,25 +363,18 @@ export function LoginScreen({
 
   return (
     <View style={styles.container}>
-      <View style={styles.toolbar}>
-        <Button
-          title="Cancel"
-          onPress={() => {
-            void cancel();
-          }}
-          disabled={
-            busy ||
-            cancellationState ===
-              'cancelling'
-          }
-        />
-
-        <Text style={styles.title}>
-          {reauthAccountId
+      <ScreenHeader
+        title={
+          reauthAccountId
             ? 'Sign in again'
-            : 'Add Messenger Account'}
-        </Text>
-      </View>
+            : 'Add Account'
+        }
+        subtitle="Messenger login"
+        onBack={() => {
+          void cancel();
+        }}
+        backLabel="Cancel"
+      />
 
       {error && (
         <Text style={styles.errorBanner}>
@@ -394,6 +402,7 @@ export function LoginScreen({
           <View style={styles.center}>
             <ActivityIndicator
               size="large"
+              color={colors.primary}
             />
           </View>
         )}
@@ -429,11 +438,12 @@ export function LoginScreen({
         <View style={styles.busyOverlay}>
           <ActivityIndicator
             size="large"
+            color={colors.primary}
           />
 
           {cancellationState ===
             'cancelling' && (
-            <Text>
+            <Text style={styles.busyText}>
               Restoring previous account…
             </Text>
           )}
@@ -456,43 +466,43 @@ const styles =
   StyleSheet.create({
     container: {
       flex: 1,
+      backgroundColor: colors.background,
     },
 
     center: {
       flex: 1,
       alignItems: 'center',
       justifyContent: 'center',
-      gap: 16,
-    },
-
-    toolbar: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 12,
-      padding: 8,
-    },
-
-    title: {
-      fontSize: 17,
-      fontWeight: '700',
+      gap: space.lg,
+      padding: space.xl,
+      backgroundColor: colors.background,
     },
 
     error: {
-      padding: 16,
-      color: '#b00020',
+      paddingHorizontal: space.lg,
+      color: colors.danger,
+      textAlign: 'center',
+      lineHeight: 21,
     },
 
     errorBanner: {
-      padding: 10,
-      backgroundColor: '#fee',
-      color: '#900',
+      paddingHorizontal: space.lg,
+      paddingVertical: space.md,
+      backgroundColor: colors.dangerSoft,
+      color: colors.danger,
     },
 
     busyOverlay: {
       ...StyleSheet.absoluteFill,
       backgroundColor:
-        'rgba(255,255,255,0.7)',
+        'rgba(255,255,255,0.78)',
       justifyContent: 'center',
       alignItems: 'center',
+      gap: space.md,
+    },
+
+    busyText: {
+      color: colors.text,
+      fontWeight: '600',
     },
   });

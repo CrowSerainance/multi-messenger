@@ -4,7 +4,6 @@ import React, {
 
 import {
   ActivityIndicator,
-  Button,
   FlatList,
   Modal,
   Pressable,
@@ -14,12 +13,34 @@ import {
 } from 'react-native';
 
 import {
+  useSafeAreaInsets,
+} from 'react-native-safe-area-context';
+
+import {
   MessengerWebView,
 } from '../components/MessengerWebView';
 
 import {
   useAccountStore,
 } from '../store/accountStore';
+
+import {
+  AppBadge,
+} from '../ui/AppBadge';
+
+import {
+  AppButton,
+} from '../ui/AppButton';
+
+import {
+  ScreenHeader,
+} from '../ui/ScreenHeader';
+
+import {
+  colors,
+  radius,
+  space,
+} from '../ui/theme';
 
 interface Props {
   onAddAccount(): void;
@@ -36,6 +57,8 @@ export function MessengerScreen({
   onBackToAccounts,
   onOpenDiagnostics,
 }: Props) {
+  const insets = useSafeAreaInsets();
+
   const [
     switcherVisible,
     setSwitcherVisible,
@@ -90,12 +113,17 @@ export function MessengerScreen({
   ) {
     return (
       <View style={styles.center}>
-        <Text>
-          No active account.
+        <Text style={styles.emptyTitle}>
+          No active account
         </Text>
 
-        <Button
-          title="Accounts"
+        <Text style={styles.emptyBody}>
+          Choose an account from your list
+          to continue.
+        </Text>
+
+        <AppButton
+          title="Go to Accounts"
           onPress={
             onBackToAccounts
           }
@@ -126,9 +154,6 @@ export function MessengerScreen({
         return;
       }
 
-      // Re-selecting the active account
-      // would only remount the WebView and
-      // lose the current chat position.
       if (
         accountId === activeAccountId
       ) {
@@ -159,27 +184,22 @@ export function MessengerScreen({
 
   return (
     <View style={styles.container}>
-      <View style={styles.toolbar}>
-        <Button
-          title="Accounts"
-          onPress={() =>
-            setSwitcherVisible(true)
-          }
-        />
-
-        <Text
-          numberOfLines={1}
-          style={styles.accountName}
-        >
-          {activeAccount.name}
-        </Text>
-
-        <Button
-          title="+"
-          onPress={onAddAccount}
-        />
-
-      </View>
+      <ScreenHeader
+        title={activeAccount.name}
+        subtitle="Messenger"
+        onBack={() =>
+          setSwitcherVisible(true)
+        }
+        backLabel="Switch"
+        right={
+          <AppButton
+            title="Add"
+            onPress={onAddAccount}
+            variant="ghost"
+            size="sm"
+          />
+        }
+      />
 
       <MessengerWebView
         accountId={
@@ -195,9 +215,10 @@ export function MessengerScreen({
         <View style={styles.overlay}>
           <ActivityIndicator
             size="large"
+            color={colors.primary}
           />
 
-          <Text>
+          <Text style={styles.overlayText}>
             Switching account…
           </Text>
         </View>
@@ -215,10 +236,34 @@ export function MessengerScreen({
           )
         }
       >
-        <View style={styles.modalBackdrop}>
-          <View style={styles.sheet}>
+        <Pressable
+          style={styles.modalBackdrop}
+          onPress={() =>
+            setSwitcherVisible(false)
+          }
+        >
+          <Pressable
+            style={[
+              styles.sheet,
+              {
+                paddingBottom:
+                  Math.max(
+                    insets.bottom,
+                    space.lg,
+                  ),
+              },
+            ]}
+            onPress={() => undefined}
+          >
+            <View style={styles.handle} />
+
             <Text style={styles.sheetTitle}>
               Switch Account
+            </Text>
+
+            <Text style={styles.sheetHint}>
+              Only one Messenger session is
+              active at a time.
             </Text>
 
             <FlatList
@@ -226,49 +271,69 @@ export function MessengerScreen({
               keyExtractor={(item) =>
                 item.id
               }
+              style={styles.sheetList}
               renderItem={({
                 item,
-              }) => (
-                <Pressable
-                  style={styles.accountRow}
-                  onPress={() => {
-                    void selectAccount(
-                      item.id,
-                    );
-                  }}
-                >
-                  <View>
-                    <Text
-                      style={
-                        styles.rowName
-                      }
-                    >
-                      {item.name}
-                    </Text>
+              }) => {
+                const isCurrent =
+                  item.id ===
+                  activeAccountId;
 
-                    {item.status ===
-                      'expired' && (
+                return (
+                  <Pressable
+                    style={({
+                      pressed,
+                    }) => [
+                      styles.accountRow,
+                      isCurrent
+                        ? styles.accountRowCurrent
+                        : null,
+                      pressed
+                        ? styles.accountRowPressed
+                        : null,
+                    ]}
+                    onPress={() => {
+                      void selectAccount(
+                        item.id,
+                      );
+                    }}
+                  >
+                    <View style={styles.rowBody}>
                       <Text
                         style={
-                          styles.expired
+                          styles.rowName
                         }
                       >
-                        Sign-in required
+                        {item.name}
                       </Text>
-                    )}
-                  </View>
 
-                  {item.id ===
-                    activeAccountId && (
-                    <Text>
-                      Current
+                      <View style={styles.rowBadges}>
+                        {isCurrent && (
+                          <AppBadge
+                            label="Current"
+                            tone="primary"
+                          />
+                        )}
+
+                        {item.status ===
+                          'expired' && (
+                          <AppBadge
+                            label="Sign-in needed"
+                            tone="danger"
+                          />
+                        )}
+                      </View>
+                    </View>
+
+                    <Text style={styles.chevron}>
+                      ›
                     </Text>
-                  )}
-                </Pressable>
-              )}
+                  </Pressable>
+                );
+              }}
             />
 
-            <Button
+            <AppButton
               title="Add Account"
               onPress={() => {
                 setSwitcherVisible(
@@ -279,24 +344,25 @@ export function MessengerScreen({
               }}
             />
 
-            <Button
+            <AppButton
+              title="All Accounts"
+              variant="secondary"
+              onPress={() => {
+                setSwitcherVisible(false);
+                onBackToAccounts();
+              }}
+            />
+
+            <AppButton
               title="Session Diagnostics"
+              variant="ghost"
               onPress={() => {
                 setSwitcherVisible(false);
                 onOpenDiagnostics();
               }}
             />
-
-            <Button
-              title="Close"
-              onPress={() =>
-                setSwitcherVisible(
-                  false,
-                )
-              }
-            />
-          </View>
-        </View>
+          </Pressable>
+        </Pressable>
       </Modal>
     </View>
   );
@@ -306,73 +372,124 @@ const styles =
   StyleSheet.create({
     container: {
       flex: 1,
+      backgroundColor: colors.background,
     },
 
     center: {
       flex: 1,
       justifyContent: 'center',
       alignItems: 'center',
-      gap: 16,
+      gap: space.md,
+      padding: space.xl,
+      backgroundColor: colors.background,
     },
 
-    toolbar: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent:
-        'space-between',
-      paddingHorizontal: 6,
-      paddingVertical: 6,
+    emptyTitle: {
+      fontSize: 20,
+      fontWeight: '800',
+      color: colors.text,
     },
 
-    accountName: {
-      flex: 1,
+    emptyBody: {
+      color: colors.textMuted,
       textAlign: 'center',
-      fontWeight: '700',
+      lineHeight: 21,
+      marginBottom: space.sm,
     },
 
     overlay: {
       ...StyleSheet.absoluteFill,
       backgroundColor:
-        'rgba(255,255,255,0.75)',
+        'rgba(255,255,255,0.82)',
       justifyContent: 'center',
       alignItems: 'center',
-      gap: 12,
+      gap: space.md,
+    },
+
+    overlayText: {
+      color: colors.text,
+      fontWeight: '600',
     },
 
     modalBackdrop: {
       flex: 1,
-      backgroundColor:
-        'rgba(0,0,0,0.4)',
+      backgroundColor: colors.overlay,
       justifyContent: 'flex-end',
     },
 
     sheet: {
-      backgroundColor: 'white',
-      padding: 20,
-      borderTopLeftRadius: 20,
-      borderTopRightRadius: 20,
-      maxHeight: '70%',
-      gap: 12,
+      backgroundColor: colors.surface,
+      paddingHorizontal: space.xl,
+      paddingTop: space.md,
+      borderTopLeftRadius: radius.xl,
+      borderTopRightRadius: radius.xl,
+      maxHeight: '78%',
+      gap: space.md,
+    },
+
+    handle: {
+      alignSelf: 'center',
+      width: 42,
+      height: 4,
+      borderRadius: radius.pill,
+      backgroundColor: colors.borderStrong,
+      marginBottom: space.xs,
     },
 
     sheetTitle: {
       fontSize: 22,
       fontWeight: '800',
+      color: colors.text,
+    },
+
+    sheetHint: {
+      color: colors.textMuted,
+      marginTop: -4,
+      marginBottom: space.xs,
+    },
+
+    sheetList: {
+      maxHeight: 280,
     },
 
     accountRow: {
-      paddingVertical: 14,
+      paddingVertical: space.lg,
+      paddingHorizontal: space.md,
+      borderRadius: radius.md,
       flexDirection: 'row',
+      alignItems: 'center',
       justifyContent:
         'space-between',
+      gap: space.md,
+    },
+
+    accountRowCurrent: {
+      backgroundColor: colors.primarySoft,
+    },
+
+    accountRowPressed: {
+      backgroundColor: '#EEF2FF',
+    },
+
+    rowBody: {
+      flex: 1,
+      gap: space.sm,
     },
 
     rowName: {
       fontSize: 17,
-      fontWeight: '600',
+      fontWeight: '700',
+      color: colors.text,
     },
 
-    expired: {
-      color: '#b00020',
+    rowBadges: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: space.sm,
+    },
+
+    chevron: {
+      fontSize: 22,
+      color: colors.textSubtle,
     },
   });

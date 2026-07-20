@@ -6,12 +6,14 @@ import React, {
 
 import {
   ActivityIndicator,
-  Button,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
+
+import {
+  useSafeAreaInsets,
+} from 'react-native-safe-area-context';
 
 import {
   useAppLockStore,
@@ -21,7 +23,22 @@ import {
   SensitiveScreen,
 } from '../components/SensitiveScreen';
 
+import {
+  AppButton,
+} from '../ui/AppButton';
+
+import {
+  AppTextField,
+} from '../ui/AppTextField';
+
+import {
+  colors,
+  space,
+} from '../ui/theme';
+
 export function UnlockScreen() {
+  const insets = useSafeAreaInsets();
+
   const config =
     useAppLockStore(
       (state) => state.config,
@@ -159,22 +176,37 @@ export function UnlockScreen() {
 
   return (
     <SensitiveScreen
-      style={styles.container}
+      style={[
+        styles.container,
+        {
+          paddingTop:
+            Math.max(insets.top, space.sm) +
+            48,
+          paddingBottom:
+            Math.max(insets.bottom, space.sm) +
+            space.xl,
+        },
+      ]}
       captureKey="unlock"
     >
+      <Text style={styles.kicker}>
+        Messenger Sessions
+      </Text>
+
       <Text style={styles.title}>
-        Unlock
+        Welcome back
       </Text>
 
       <Text style={styles.subtitle}>
         Enter your app PIN to open saved
-        Messenger sessions.
+        Messenger sessions on this device.
       </Text>
 
-      <TextInput
+      <AppTextField
+        label="App PIN"
         value={pin}
         onChangeText={setPin}
-        placeholder="App PIN"
+        placeholder="••••"
         keyboardType="number-pad"
         secureTextEntry
         maxLength={8}
@@ -182,30 +214,26 @@ export function UnlockScreen() {
           !busy &&
           cooldownRemainingMs === 0
         }
-        style={styles.input}
+        style={styles.pinInput}
+        error={error}
+        hint={
+          cooldownRemainingMs > 0
+            ? `Too many failed attempts. Try again in ${cooldownSeconds}s.`
+            : 'PIN is stored only on this device.'
+        }
         onSubmitEditing={() => {
           void submitPin();
         }}
       />
 
-      {error && (
-        <Text style={styles.error}>
-          {error}
-        </Text>
-      )}
-
-      {cooldownRemainingMs > 0 && (
-        <Text style={styles.hint}>
-          Too many failed attempts. Try
-          again in {cooldownSeconds}s.
-        </Text>
-      )}
-
       {busy ? (
-        <ActivityIndicator size="large" />
+        <ActivityIndicator
+          size="large"
+          color={colors.primary}
+        />
       ) : (
         <View style={styles.actions}>
-          <Button
+          <AppButton
             title="Unlock"
             onPress={() => {
               void submitPin();
@@ -217,8 +245,9 @@ export function UnlockScreen() {
           />
 
           {biometricAllowed && (
-            <Button
+            <AppButton
               title="Use Biometrics"
+              variant="secondary"
               onPress={() => {
                 void retryBiometric();
               }}
@@ -236,41 +265,38 @@ export function UnlockScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 24,
-    paddingTop: 96,
-    backgroundColor: 'white',
-    gap: 14,
+    paddingHorizontal: space.xl,
+    backgroundColor: colors.background,
+    gap: space.md,
+  },
+
+  kicker: {
+    color: colors.primary,
+    fontWeight: '700',
+    fontSize: 14,
   },
 
   title: {
-    fontSize: 28,
+    fontSize: 30,
     fontWeight: '800',
+    color: colors.text,
   },
 
   subtitle: {
-    color: '#555',
-    lineHeight: 20,
+    color: colors.textMuted,
+    lineHeight: 22,
+    fontSize: 15,
+    marginBottom: space.sm,
   },
 
-  input: {
-    borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 20,
-    letterSpacing: 6,
-  },
-
-  error: {
-    color: '#b00020',
-  },
-
-  hint: {
-    color: '#666',
+  pinInput: {
+    letterSpacing: 8,
+    fontSize: 22,
+    textAlign: 'center',
   },
 
   actions: {
-    gap: 10,
+    gap: space.sm,
+    marginTop: space.sm,
   },
 });

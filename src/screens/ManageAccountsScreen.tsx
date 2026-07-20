@@ -4,12 +4,15 @@ import React, {
 
 import {
   Alert,
-  Button,
   FlatList,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+
+import {
+  useSafeAreaInsets,
+} from 'react-native-safe-area-context';
 
 import type {
   Account,
@@ -23,6 +26,28 @@ import {
 import {
   NameAccountModal,
 } from '../components/NameAccountModal';
+
+import {
+  AppBadge,
+} from '../ui/AppBadge';
+
+import {
+  AppButton,
+} from '../ui/AppButton';
+
+import {
+  EmptyState,
+} from '../ui/EmptyState';
+
+import {
+  ScreenHeader,
+} from '../ui/ScreenHeader';
+
+import {
+  colors,
+  radius,
+  space,
+} from '../ui/theme';
 
 interface Props {
   onBack(): void;
@@ -62,6 +87,8 @@ export function ManageAccountsScreen({
   onOpenSecurity,
   onOpenPrivacy,
 }: Props) {
+  const insets = useSafeAreaInsets();
+
   const accounts =
     useAccountStore(
       (state) =>
@@ -243,30 +270,78 @@ export function ManageAccountsScreen({
 
   return (
     <View style={styles.container}>
-      <View style={styles.toolbar}>
-        <Button
-          title="Back"
-          onPress={onBack}
-          disabled={working}
-        />
-
-        <Text style={styles.title}>
-          Manage Accounts
-        </Text>
-      </View>
+      <ScreenHeader
+        title="Manage Accounts"
+        onBack={onBack}
+      />
 
       <FlatList
         data={accounts}
         keyExtractor={(item) =>
           item.id
         }
-        contentContainerStyle={
-          styles.list
-        }
+        contentContainerStyle={[
+          styles.list,
+          {
+            paddingBottom:
+              Math.max(
+                insets.bottom,
+                space.sm,
+              ) + space.lg,
+          },
+        ]}
         ListEmptyComponent={
-          <Text style={styles.empty}>
-            No saved accounts.
-          </Text>
+          <EmptyState
+            title="Nothing to manage"
+            body="Add an account from the home screen first."
+          />
+        }
+        ListFooterComponent={
+          <View style={styles.footer}>
+            <Text style={styles.sectionLabel}>
+              Session tools
+            </Text>
+
+            <AppButton
+              title="Refresh Active Session"
+              disabled={
+                working ||
+                activeAccountId === null
+              }
+              busy={working}
+              onPress={refreshActiveSession}
+              variant="secondary"
+            />
+
+            <AppButton
+              title="Force Clear Cookies"
+              disabled={working}
+              onPress={confirmForceClear}
+              variant="dangerGhost"
+            />
+
+            <Text style={styles.sectionLabel}>
+              App settings
+            </Text>
+
+            <View style={styles.footerRow}>
+              <AppButton
+                title="Security"
+                disabled={working}
+                onPress={onOpenSecurity}
+                variant="secondary"
+                style={styles.footerHalf}
+              />
+
+              <AppButton
+                title="Privacy"
+                disabled={working}
+                onPress={onOpenPrivacy}
+                variant="secondary"
+                style={styles.footerHalf}
+              />
+            </View>
+          </View>
         }
         renderItem={({
           item,
@@ -281,37 +356,42 @@ export function ManageAccountsScreen({
               <View style={styles.badges}>
                 {item.id ===
                   defaultAccountId && (
-                  <Text style={styles.defaultBadge}>
-                    Default
-                  </Text>
+                  <AppBadge
+                    label="Default"
+                    tone="success"
+                  />
                 )}
 
                 {item.id ===
                   activeAccountId && (
-                  <Text style={styles.activeBadge}>
-                    Active
-                  </Text>
+                  <AppBadge
+                    label="Active"
+                    tone="primary"
+                  />
+                )}
+
+                {item.status ===
+                  'expired' && (
+                  <AppBadge
+                    label="Sign-in needed"
+                    tone="danger"
+                  />
                 )}
               </View>
             </View>
 
-            {item.status ===
-              'expired' && (
-              <Text style={styles.expired}>
-                Sign-in required
-              </Text>
-            )}
-
             <Text style={styles.detail}>
-              Last session refresh:{' '}
+              Last refresh:{' '}
               {formatRefreshTime(
                 item.lastRefreshAt,
               )}
             </Text>
 
             <View style={styles.actions}>
-              <Button
-                title="↑"
+              <AppButton
+                title="Up"
+                size="sm"
+                variant="secondary"
                 disabled={
                   working || index === 0
                 }
@@ -323,10 +403,13 @@ export function ManageAccountsScreen({
                     ),
                   );
                 }}
+                style={styles.action}
               />
 
-              <Button
-                title="↓"
+              <AppButton
+                title="Down"
+                size="sm"
+                variant="secondary"
                 disabled={
                   working ||
                   index ===
@@ -340,71 +423,50 @@ export function ManageAccountsScreen({
                     ),
                   );
                 }}
+                style={styles.action}
               />
 
-              <Button
+              <AppButton
                 title="Rename"
+                size="sm"
+                variant="secondary"
                 disabled={working}
                 onPress={() =>
                   setRenameTarget(item)
                 }
+                style={styles.action}
               />
 
-              <Button
+              <AppButton
                 title={
                   item.id ===
                   defaultAccountId
                     ? 'Unset Default'
                     : 'Set Default'
                 }
+                size="sm"
+                variant="secondary"
                 disabled={working}
                 onPress={() =>
                   toggleDefault(item)
                 }
+                style={styles.action}
               />
 
-              <Button
+              <AppButton
                 title="Remove"
-                color="#b00020"
+                size="sm"
+                variant="dangerGhost"
                 disabled={working}
                 onPress={() =>
                   confirmRemove(item)
                 }
+                style={styles.action}
               />
             </View>
           </View>
         )}
       />
-
-      <View style={styles.footer}>
-        <Button
-          title="Refresh Active Session"
-          disabled={
-            working ||
-            activeAccountId === null
-          }
-          onPress={refreshActiveSession}
-        />
-
-        <Button
-          title="Force Clear Cookies"
-          color="#b00020"
-          disabled={working}
-          onPress={confirmForceClear}
-        />
-
-        <Button
-          title="Security"
-          disabled={working}
-          onPress={onOpenSecurity}
-        />
-
-        <Button
-          title="Privacy"
-          disabled={working}
-          onPress={onOpenPrivacy}
-        />
-      </View>
 
       <NameAccountModal
         visible={renameTarget !== null}
@@ -427,89 +489,80 @@ const styles =
   StyleSheet.create({
     container: {
       flex: 1,
-      paddingTop: 40,
-      backgroundColor: 'white',
-    },
-
-    toolbar: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 12,
-      paddingHorizontal: 12,
-      paddingVertical: 8,
-    },
-
-    title: {
-      fontSize: 20,
-      fontWeight: '800',
+      backgroundColor: colors.background,
     },
 
     list: {
       flexGrow: 1,
-      padding: 12,
-      gap: 12,
-    },
-
-    empty: {
-      color: '#777',
-      textAlign: 'center',
-      marginTop: 32,
+      padding: space.lg,
+      gap: space.md,
     },
 
     card: {
+      backgroundColor: colors.surface,
       borderWidth: 1,
-      borderColor: '#ddd',
-      borderRadius: 12,
-      padding: 14,
-      gap: 6,
+      borderColor: colors.border,
+      borderRadius: radius.lg,
+      padding: space.lg,
+      gap: space.sm,
     },
 
     cardHeader: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent:
-        'space-between',
-      gap: 8,
+      gap: space.sm,
     },
 
     name: {
-      flex: 1,
       fontSize: 18,
       fontWeight: '700',
+      color: colors.text,
     },
 
     badges: {
       flexDirection: 'row',
-      gap: 6,
-    },
-
-    defaultBadge: {
-      color: '#1a6b1a',
-      fontWeight: '700',
-    },
-
-    activeBadge: {
-      color: '#1a4b8b',
-      fontWeight: '700',
-    },
-
-    expired: {
-      color: '#b00020',
+      flexWrap: 'wrap',
+      gap: space.sm,
     },
 
     detail: {
-      color: '#555',
+      color: colors.textMuted,
+      fontSize: 14,
     },
 
     actions: {
       flexDirection: 'row',
       flexWrap: 'wrap',
-      gap: 8,
-      marginTop: 4,
+      gap: space.sm,
+      marginTop: space.sm,
+    },
+
+    action: {
+      flexGrow: 1,
     },
 
     footer: {
-      padding: 12,
-      gap: 8,
+      marginTop: space.lg,
+      gap: space.sm,
+      paddingTop: space.md,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border,
+    },
+
+    sectionLabel: {
+      marginTop: space.sm,
+      marginBottom: space.xs,
+      fontSize: 13,
+      fontWeight: '700',
+      color: colors.textMuted,
+      textTransform: 'uppercase',
+      letterSpacing: 0.4,
+    },
+
+    footerRow: {
+      flexDirection: 'row',
+      gap: space.sm,
+    },
+
+    footerHalf: {
+      flex: 1,
     },
   });

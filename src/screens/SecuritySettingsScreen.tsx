@@ -4,14 +4,16 @@ import React, {
 } from 'react';
 
 import {
-  ActivityIndicator,
-  Button,
+  ScrollView,
   StyleSheet,
   Switch,
   Text,
-  TextInput,
   View,
 } from 'react-native';
+
+import {
+  useSafeAreaInsets,
+} from 'react-native-safe-area-context';
 
 import {
   pinValidationMessage,
@@ -25,6 +27,24 @@ import {
   SensitiveScreen,
 } from '../components/SensitiveScreen';
 
+import {
+  AppButton,
+} from '../ui/AppButton';
+
+import {
+  AppTextField,
+} from '../ui/AppTextField';
+
+import {
+  ScreenHeader,
+} from '../ui/ScreenHeader';
+
+import {
+  colors,
+  radius,
+  space,
+} from '../ui/theme';
+
 interface Props {
   onBack(): void;
   onOpenPrivacy(): void;
@@ -34,6 +54,8 @@ export function SecuritySettingsScreen({
   onBack,
   onOpenPrivacy,
 }: Props) {
+  const insets = useSafeAreaInsets();
+
   const config =
     useAppLockStore(
       (state) => state.config,
@@ -141,130 +163,143 @@ export function SecuritySettingsScreen({
       style={styles.container}
       captureKey="security-settings"
     >
-      <View style={styles.toolbar}>
-        <Button
-          title="Back"
-          onPress={onBack}
-          disabled={busy}
+      <ScreenHeader
+        title="Security"
+        onBack={onBack}
+      />
+
+      <ScrollView
+        contentContainerStyle={[
+          styles.content,
+          {
+            paddingBottom:
+              Math.max(
+                insets.bottom,
+                space.sm,
+              ) + space.xl,
+          },
+        ]}
+        keyboardShouldPersistTaps="handled"
+      >
+        <Text style={styles.section}>
+          Change PIN
+        </Text>
+
+        <AppTextField
+          label="Current PIN"
+          value={currentPin}
+          onChangeText={setCurrentPin}
+          placeholder="Enter current PIN"
+          keyboardType="number-pad"
+          secureTextEntry
+          maxLength={8}
+          editable={!busy}
+          style={styles.pinInput}
         />
 
-        <Text style={styles.title}>
-          Security
-        </Text>
-      </View>
+        <AppTextField
+          label="New PIN"
+          value={nextPin}
+          onChangeText={setNextPin}
+          placeholder="4–8 digits"
+          keyboardType="number-pad"
+          secureTextEntry
+          maxLength={8}
+          editable={!busy}
+          style={styles.pinInput}
+        />
 
-      <Text style={styles.section}>
-        App PIN
-      </Text>
+        <AppTextField
+          label="Confirm new PIN"
+          value={confirmPin}
+          onChangeText={setConfirmPin}
+          placeholder="Repeat new PIN"
+          keyboardType="number-pad"
+          secureTextEntry
+          maxLength={8}
+          editable={!busy}
+          style={styles.pinInput}
+          error={error}
+        />
 
-      <TextInput
-        value={currentPin}
-        onChangeText={setCurrentPin}
-        placeholder="Current PIN"
-        keyboardType="number-pad"
-        secureTextEntry
-        maxLength={8}
-        editable={!busy}
-        style={styles.input}
-      />
-
-      <TextInput
-        value={nextPin}
-        onChangeText={setNextPin}
-        placeholder="New PIN (4-8 digits)"
-        keyboardType="number-pad"
-        secureTextEntry
-        maxLength={8}
-        editable={!busy}
-        style={styles.input}
-      />
-
-      <TextInput
-        value={confirmPin}
-        onChangeText={setConfirmPin}
-        placeholder="Confirm new PIN"
-        keyboardType="number-pad"
-        secureTextEntry
-        maxLength={8}
-        editable={!busy}
-        style={styles.input}
-      />
-
-      <Button
-        title="Change PIN"
-        onPress={() => {
-          void savePin();
-        }}
-        disabled={
-          busy ||
-          currentPin.length === 0 ||
-          nextPin.length === 0 ||
-          confirmPin.length === 0
-        }
-      />
-
-      <View style={styles.row}>
-        <View style={styles.rowText}>
-          <Text style={styles.rowTitle}>
-            Biometric unlock
-          </Text>
-
-          <Text style={styles.rowHint}>
-            {biometric.usable
-              ? 'Unlock with fingerprint or face after the app locks.'
-              : 'Enroll biometrics in system settings to enable this.'}
-          </Text>
-        </View>
-
-        <Switch
-          value={
-            !!config?.biometricEnabled &&
-            biometric.usable
-          }
-          onValueChange={(value) => {
-            void onToggleBiometric(value);
+        <AppButton
+          title="Update PIN"
+          busy={busy}
+          onPress={() => {
+            void savePin();
           }}
           disabled={
-            busy || !biometric.usable
+            busy ||
+            currentPin.length === 0 ||
+            nextPin.length === 0 ||
+            confirmPin.length === 0
           }
         />
-      </View>
 
-      <Text style={styles.section}>
-        Storage backup
-      </Text>
+        {message ? (
+          <Text style={styles.message}>
+            {message}
+          </Text>
+        ) : null}
 
-      <Text style={styles.body}>
-        Session cookies are stored only in
-        SecureStore with
-        WHEN_UNLOCKED_THIS_DEVICE_ONLY.
-        Android Auto Backup is configured to
-        exclude SecureStore data, so cookie
-        snapshots are not synced to cloud
-        backup.
-      </Text>
-
-      <Button
-        title="Privacy Policy"
-        onPress={onOpenPrivacy}
-        disabled={busy}
-      />
-
-      {message && (
-        <Text style={styles.message}>
-          {message}
+        <Text style={styles.section}>
+          Biometrics
         </Text>
-      )}
 
-      {error && (
-        <Text style={styles.error}>
-          {error}
+        <View style={styles.row}>
+          <View style={styles.rowText}>
+            <Text style={styles.rowTitle}>
+              Unlock with biometrics
+            </Text>
+
+            <Text style={styles.rowHint}>
+              {biometric.usable
+                ? 'Use fingerprint or face after the app locks.'
+                : 'Enroll biometrics in system settings to enable this.'}
+            </Text>
+          </View>
+
+          <Switch
+            value={
+              !!config?.biometricEnabled &&
+              biometric.usable
+            }
+            onValueChange={(value) => {
+              void onToggleBiometric(value);
+            }}
+            disabled={
+              busy || !biometric.usable
+            }
+            trackColor={{
+              false: colors.borderStrong,
+              true: '#93C5FD',
+            }}
+            thumbColor={
+              config?.biometricEnabled &&
+              biometric.usable
+                ? colors.primary
+                : '#F8FAFC'
+            }
+          />
+        </View>
+
+        <Text style={styles.section}>
+          Storage backup
         </Text>
-      )}
 
-      {busy && (
-        <ActivityIndicator size="large" />
-      )}
+        <Text style={styles.body}>
+          Session cookies stay in SecureStore on
+          this device and are excluded from
+          Android cloud backup.
+        </Text>
+
+        <AppButton
+          title="Privacy Policy"
+          variant="secondary"
+          onPress={onOpenPrivacy}
+          disabled={busy}
+        />
+      </ScrollView>
     </SensitiveScreen>
   );
 }
@@ -272,45 +307,36 @@ export function SecuritySettingsScreen({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingTop: 40,
-    paddingHorizontal: 16,
-    backgroundColor: 'white',
-    gap: 12,
+    backgroundColor: colors.background,
   },
 
-  toolbar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginBottom: 8,
-  },
-
-  title: {
-    fontSize: 20,
-    fontWeight: '800',
+  content: {
+    padding: space.lg,
+    gap: space.md,
   },
 
   section: {
-    marginTop: 8,
-    fontSize: 16,
+    marginTop: space.sm,
+    fontSize: 13,
     fontWeight: '700',
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
   },
 
-  input: {
-    borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 16,
+  pinInput: {
     letterSpacing: 3,
   },
 
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    paddingVertical: 8,
+    gap: space.md,
+    padding: space.lg,
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
 
   rowText: {
@@ -321,23 +347,23 @@ const styles = StyleSheet.create({
   rowTitle: {
     fontWeight: '700',
     fontSize: 16,
+    color: colors.text,
   },
 
   rowHint: {
-    color: '#666',
+    color: colors.textMuted,
     fontSize: 13,
+    lineHeight: 18,
   },
 
   body: {
-    color: '#444',
-    lineHeight: 20,
+    color: colors.textMuted,
+    lineHeight: 21,
+    fontSize: 15,
   },
 
   message: {
-    color: '#1a6b1a',
-  },
-
-  error: {
-    color: '#b00020',
+    color: colors.success,
+    fontWeight: '600',
   },
 });

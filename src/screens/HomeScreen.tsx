@@ -2,13 +2,16 @@ import React from 'react';
 
 import {
   Alert,
-  Button,
   FlatList,
   Pressable,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+
+import {
+  useSafeAreaInsets,
+} from 'react-native-safe-area-context';
 
 import type {
   Account,
@@ -17,6 +20,24 @@ import type {
 import {
   useAccountStore,
 } from '../store/accountStore';
+
+import {
+  AppBadge,
+} from '../ui/AppBadge';
+
+import {
+  AppButton,
+} from '../ui/AppButton';
+
+import {
+  EmptyState,
+} from '../ui/EmptyState';
+
+import {
+  colors,
+  radius,
+  space,
+} from '../ui/theme';
 
 interface Props {
   onSelectAccount(
@@ -35,6 +56,8 @@ export function HomeScreen({
   onOpenSecurity,
   onOpenPrivacy,
 }: Props) {
+  const insets = useSafeAreaInsets();
+
   const accounts =
     useAccountStore(
       (state) =>
@@ -78,14 +101,29 @@ export function HomeScreen({
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.heading}>
-        Messenger Accounts
-      </Text>
+    <View
+      style={[
+        styles.container,
+        {
+          paddingTop:
+            Math.max(insets.top, space.sm) +
+            space.lg,
+          paddingBottom:
+            Math.max(insets.bottom, space.sm) +
+            space.md,
+        },
+      ]}
+    >
+      <View style={styles.header}>
+        <Text style={styles.heading}>
+          Messenger Sessions
+        </Text>
 
-      <Text style={styles.hint}>
-        Tap to open · hold to remove
-      </Text>
+        <Text style={styles.hint}>
+          Tap an account to open it. Press and
+          hold to remove.
+        </Text>
+      </View>
 
       <FlatList
         data={accounts}
@@ -96,13 +134,23 @@ export function HomeScreen({
           styles.list
         }
         ListEmptyComponent={
-          <Text style={styles.empty}>
-            No saved accounts.
-          </Text>
+          <EmptyState
+            title="No accounts yet"
+            body="Add a Messenger account to save its session on this device and switch between accounts later."
+            actionLabel="Add Account"
+            onAction={onAddAccount}
+          />
         }
         renderItem={({ item }) => (
           <Pressable
-            style={styles.account}
+            accessibilityRole="button"
+            accessibilityLabel={`Open ${item.name}`}
+            style={({ pressed }) => [
+              styles.account,
+              pressed
+                ? styles.accountPressed
+                : null,
+            ]}
             onPress={() =>
               onSelectAccount(
                 item.id,
@@ -112,7 +160,7 @@ export function HomeScreen({
               confirmDelete(item)
             }
           >
-            <View>
+            <View style={styles.accountBody}>
               <View style={styles.nameRow}>
                 <Text style={styles.name}>
                   {item.name}
@@ -120,52 +168,63 @@ export function HomeScreen({
 
                 {item.id ===
                   defaultAccountId && (
-                  <Text style={styles.defaultBadge}>
-                    Default
-                  </Text>
+                  <AppBadge
+                    label="Default"
+                    tone="success"
+                  />
+                )}
+
+                {item.status ===
+                  'expired' && (
+                  <AppBadge
+                    label="Sign-in needed"
+                    tone="danger"
+                  />
                 )}
               </View>
 
-              <Text
-                style={
-                  item.status ===
-                  'expired'
-                    ? styles.expired
-                    : styles.status
-                }
-              >
+              <Text style={styles.status}>
                 {item.status ===
                 'expired'
-                  ? 'Sign-in required'
-                  : 'Saved session'}
+                  ? 'Open to sign in again'
+                  : 'Saved session ready'}
               </Text>
             </View>
 
-            <Text>›</Text>
+            <Text style={styles.chevron}>
+              ›
+            </Text>
           </Pressable>
         )}
       />
 
       <View style={styles.footer}>
-        <Button
+        <AppButton
           title="Add Account"
           onPress={onAddAccount}
         />
 
-        <Button
+        <AppButton
           title="Manage Accounts"
           onPress={onManageAccounts}
+          variant="secondary"
         />
 
-        <Button
-          title="Security"
-          onPress={onOpenSecurity}
-        />
+        <View style={styles.footerRow}>
+          <AppButton
+            title="Security"
+            onPress={onOpenSecurity}
+            variant="ghost"
+            style={styles.footerHalf}
+          />
 
-        <Button
-          title="Privacy"
-          onPress={onOpenPrivacy}
-        />
+          <AppButton
+            title="Privacy"
+            onPress={onOpenPrivacy}
+            variant="ghost"
+            style={styles.footerHalf}
+          />
+        </View>
       </View>
     </View>
   );
@@ -175,24 +234,31 @@ const styles =
   StyleSheet.create({
     container: {
       flex: 1,
-      padding: 20,
-      paddingTop: 48,
+      paddingHorizontal: space.xl,
+      backgroundColor: colors.background,
+    },
+
+    header: {
+      marginBottom: space.lg,
+      gap: space.sm,
     },
 
     heading: {
-      fontSize: 26,
+      fontSize: 28,
       fontWeight: '800',
-      marginBottom: 4,
+      color: colors.text,
     },
 
     hint: {
-      color: '#888',
-      marginBottom: 16,
+      color: colors.textMuted,
+      fontSize: 15,
+      lineHeight: 21,
     },
 
     list: {
-      gap: 10,
+      gap: space.md,
       flexGrow: 1,
+      paddingBottom: space.lg,
     },
 
     account: {
@@ -200,43 +266,59 @@ const styles =
       justifyContent:
         'space-between',
       alignItems: 'center',
-      padding: 16,
+      padding: space.lg,
+      backgroundColor: colors.surface,
       borderWidth: 1,
-      borderColor: '#ddd',
-      borderRadius: 12,
+      borderColor: colors.border,
+      borderRadius: radius.lg,
+      gap: space.md,
+    },
+
+    accountPressed: {
+      backgroundColor: colors.primarySoft,
+      borderColor: '#BFDBFE',
+    },
+
+    accountBody: {
+      flex: 1,
+      gap: 4,
     },
 
     nameRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 8,
+      flexWrap: 'wrap',
+      gap: space.sm,
     },
 
     name: {
       fontSize: 18,
       fontWeight: '700',
-    },
-
-    defaultBadge: {
-      color: '#1a6b1a',
-      fontWeight: '700',
-    },
-
-    footer: {
-      gap: 8,
+      color: colors.text,
     },
 
     status: {
-      color: '#555',
-      marginTop: 4,
+      color: colors.textMuted,
+      fontSize: 14,
     },
 
-    expired: {
-      color: '#b00020',
-      marginTop: 4,
+    chevron: {
+      fontSize: 24,
+      color: colors.textSubtle,
+      fontWeight: '300',
     },
 
-    empty: {
-      color: '#777',
+    footer: {
+      gap: space.sm,
+      paddingTop: space.sm,
+    },
+
+    footerRow: {
+      flexDirection: 'row',
+      gap: space.sm,
+    },
+
+    footerHalf: {
+      flex: 1,
     },
   });

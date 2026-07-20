@@ -3,7 +3,6 @@ import React, {
 } from 'react';
 
 import {
-  Button,
   FlatList,
   StyleSheet,
   Text,
@@ -11,10 +10,32 @@ import {
 } from 'react-native';
 
 import {
+  useSafeAreaInsets,
+} from 'react-native-safe-area-context';
+
+import {
   clearSessionDiagnostics,
   getSessionDiagnostics,
   type SessionDiagnosticEntry,
 } from '../services/sessionDiagnostics';
+
+import {
+  AppButton,
+} from '../ui/AppButton';
+
+import {
+  EmptyState,
+} from '../ui/EmptyState';
+
+import {
+  ScreenHeader,
+} from '../ui/ScreenHeader';
+
+import {
+  colors,
+  radius,
+  space,
+} from '../ui/theme';
 
 interface Props {
   onBack(): void;
@@ -27,6 +48,8 @@ function readNewestFirst(): SessionDiagnosticEntry[] {
 export function SessionDiagnosticsScreen({
   onBack,
 }: Props) {
+  const insets = useSafeAreaInsets();
+
   const [entries, setEntries] =
     useState<SessionDiagnosticEntry[]>(
       readNewestFirst,
@@ -43,31 +66,30 @@ export function SessionDiagnosticsScreen({
 
   return (
     <View style={styles.container}>
-      <View style={styles.toolbar}>
-        <Button
-          title="Back"
-          onPress={onBack}
-        />
-
-        <Text style={styles.title}>
-          Session Diagnostics
-        </Text>
-      </View>
+      <ScreenHeader
+        title="Diagnostics"
+        onBack={onBack}
+      />
 
       <Text style={styles.notice}>
-        Entries contain operation status only. Cookie names and values are never recorded.
+        Operation status only. Cookie names and
+        values are never recorded.
       </Text>
 
       <View style={styles.actions}>
-        <Button
+        <AppButton
           title="Refresh"
           onPress={refresh}
+          variant="secondary"
+          style={styles.action}
         />
 
-        <Button
+        <AppButton
           title="Clear"
           onPress={clear}
           disabled={entries.length === 0}
+          variant="dangerGhost"
+          style={styles.action}
         />
       </View>
 
@@ -76,11 +98,21 @@ export function SessionDiagnosticsScreen({
         keyExtractor={(item) =>
           item.sequence.toString()
         }
-        contentContainerStyle={styles.list}
+        contentContainerStyle={[
+          styles.list,
+          {
+            paddingBottom:
+              Math.max(
+                insets.bottom,
+                space.sm,
+              ) + space.lg,
+          },
+        ]}
         ListEmptyComponent={
-          <Text style={styles.empty}>
-            No session diagnostics recorded.
-          </Text>
+          <EmptyState
+            title="No diagnostics yet"
+            body="Session operations will appear here if a native cookie or storage call fails or times out."
+          />
         }
         renderItem={({ item }) => (
           <View style={styles.entry}>
@@ -117,67 +149,54 @@ export function SessionDiagnosticsScreen({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingTop: 40,
-    backgroundColor: 'white',
-  },
-
-  toolbar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-
-  title: {
-    fontSize: 20,
-    fontWeight: '800',
+    backgroundColor: colors.background,
   },
 
   notice: {
-    color: '#555',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+    color: colors.textMuted,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.md,
+    lineHeight: 20,
   },
 
   actions: {
     flexDirection: 'row',
-    gap: 12,
-    paddingHorizontal: 12,
-    paddingBottom: 8,
+    gap: space.sm,
+    paddingHorizontal: space.lg,
+    paddingBottom: space.md,
+  },
+
+  action: {
+    flex: 1,
   },
 
   list: {
     flexGrow: 1,
-    padding: 12,
-    gap: 10,
-  },
-
-  empty: {
-    color: '#777',
-    textAlign: 'center',
-    marginTop: 32,
+    paddingHorizontal: space.lg,
+    gap: space.md,
   },
 
   entry: {
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 10,
-    padding: 12,
-    gap: 3,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    padding: space.lg,
+    gap: 4,
   },
 
   event: {
     fontSize: 16,
     fontWeight: '700',
+    color: colors.text,
   },
 
   detail: {
-    color: '#555',
+    color: colors.textMuted,
   },
 
   errorCode: {
-    color: '#9a3412',
+    color: colors.warning,
     fontWeight: '600',
   },
 });

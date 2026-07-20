@@ -4,13 +4,25 @@ import React, {
 } from 'react';
 
 import {
-  Button,
   Modal,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
+
+import {
+  AppButton,
+} from '../ui/AppButton';
+
+import {
+  AppTextField,
+} from '../ui/AppTextField';
+
+import {
+  colors,
+  radius,
+  space,
+} from '../ui/theme';
 
 interface Props {
   visible: boolean;
@@ -53,21 +65,34 @@ export function NameAccountModal({
             {title}
           </Text>
 
-          <TextInput
+          <Text style={styles.body}>
+            Pick a short label you’ll recognize
+            later, like Work or Personal.
+          </Text>
+
+          <AppTextField
             value={name}
             onChangeText={setName}
-            placeholder="Work, Personal, Client..."
+            placeholder="Work, Personal, Client…"
             editable={!busy}
             autoFocus
-            style={styles.input}
+            onSubmitEditing={() => {
+              if (
+                !busy &&
+                name.trim().length > 0
+              ) {
+                onSubmit(name.trim());
+              }
+            }}
           />
 
-          <Button
+          <AppButton
             title={
               busy
-                ? 'Saving...'
+                ? 'Saving…'
                 : submitLabel
             }
+            busy={busy}
             disabled={
               busy ||
               name.trim().length === 0
@@ -77,8 +102,9 @@ export function NameAccountModal({
             }
           />
 
-          <Button
+          <AppButton
             title="Cancel"
+            variant="ghost"
             disabled={busy}
             onPress={onCancel}
           />
@@ -92,29 +118,27 @@ const styles =
   StyleSheet.create({
     backdrop: {
       flex: 1,
-      backgroundColor:
-        'rgba(0,0,0,0.5)',
+      backgroundColor: colors.overlay,
       justifyContent: 'center',
-      padding: 24,
+      padding: space.xl,
     },
 
     card: {
-      backgroundColor: 'white',
-      borderRadius: 16,
-      padding: 20,
-      gap: 16,
+      backgroundColor: colors.surface,
+      borderRadius: radius.xl,
+      padding: space.xl,
+      gap: space.md,
     },
 
     title: {
-      fontSize: 20,
-      fontWeight: '700',
+      fontSize: 22,
+      fontWeight: '800',
+      color: colors.text,
     },
 
-    input: {
-      borderWidth: 1,
-      borderColor: '#aaa',
-      borderRadius: 8,
-      paddingHorizontal: 12,
-      paddingVertical: 10,
+    body: {
+      color: colors.textMuted,
+      lineHeight: 20,
+      marginTop: -4,
     },
   });
