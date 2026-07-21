@@ -18,8 +18,8 @@ import {
 
 import {
   isHttpUrl,
+  LOGIN_USER_AGENT,
   MESSENGER_LOGIN_URL,
-  MOBILE_USER_AGENT,
 } from '../constants/messenger';
 
 import {
@@ -388,7 +388,7 @@ export function LoginScreen({
           uri: MESSENGER_LOGIN_URL,
         }}
         userAgent={
-          MOBILE_USER_AGENT
+          LOGIN_USER_AGENT
         }
         sharedCookiesEnabled
         thirdPartyCookiesEnabled

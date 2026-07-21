@@ -6,6 +6,14 @@ export const MESSENGER_HOME_URL =
 export const MESSENGER_LOGIN_URL =
   'https://www.messenger.com/login/';
 
+// Messenger's mobile route can collapse the login page into
+// an app/home landing page. Use its supported desktop web flow
+// while adding an account so the credential form is available.
+export const LOGIN_USER_AGENT =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) ' +
+  'AppleWebKit/537.36 (KHTML, like Gecko) ' +
+  'Chrome/140.0.0.0 Safari/537.36';
+
 export const COOKIE_ORIGINS = [
   'https://www.facebook.com/',
   'https://m.facebook.com/',
