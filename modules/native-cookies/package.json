@@ -1,0 +1,15 @@
+{
+  "name": "native-cookies",
+  "version": "0.1.0",
+  "description": "Owned Android CookieManager backend for Messenger Sessions",
+  "main": "index.ts",
+  "types": "index.ts",
+  "scripts": {},
+  "keywords": ["expo", "cookies"],
+  "license": "UNLICENSED",
+  "peerDependencies": {
+    "expo": "*",
+    "react": "*",
+    "react-native": "*"
+  }
+}
