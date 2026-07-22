@@ -1,0 +1,16 @@
+{
+  "name": "webview-profiles",
+  "version": "0.1.0",
+  "description": "AndroidX WebKit multi-profile capability probe and future profile APIs",
+  "main": "index.ts",
+  "types": "index.ts",
+  "scripts": {},
+  "keywords": ["expo", "webview", "profiles"],
+  "author": "",
+  "license": "UNLICENSED",
+  "peerDependencies": {
+    "expo": "*",
+    "react": "*",
+    "react-native": "*"
+  }
+}

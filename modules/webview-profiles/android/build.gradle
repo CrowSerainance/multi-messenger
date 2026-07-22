@@ -1,0 +1,20 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'com.example.messengersessions.webviewprofiles'
+version = '0.1.0'
+
+android {
+  namespace 'expo.modules.webviewprofiles'
+  defaultConfig {
+    versionCode 1
+    versionName '0.1.0'
+  }
+}
+
+dependencies {
+  // Match the major line already pulled by react-native-webview.
+  implementation 'androidx.webkit:webkit:1.14.0'
+}
