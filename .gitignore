@@ -31,6 +31,9 @@ yarn-error.*
 *.pem
 
 # local env files
+.env
+.env.*
+!.env.example
 .env*.local
 
 # typescript
@@ -39,3 +42,6 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# Generated builds inside local Expo modules
+**/android/build/

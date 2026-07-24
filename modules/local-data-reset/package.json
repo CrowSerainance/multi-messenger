@@ -1,0 +1,15 @@
+{
+  "name": "local-data-reset",
+  "version": "0.1.0",
+  "description": "Owned Android full app-data reset for forgotten PIN recovery",
+  "main": "index.ts",
+  "types": "index.ts",
+  "scripts": {},
+  "keywords": ["expo", "security", "reset"],
+  "license": "UNLICENSED",
+  "peerDependencies": {
+    "expo": "*",
+    "react": "*",
+    "react-native": "*"
+  }
+}

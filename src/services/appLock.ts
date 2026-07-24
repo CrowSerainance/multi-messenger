@@ -32,6 +32,7 @@ export interface AppLockConfig {
 export interface BiometricAvailability {
   hardware: boolean;
   enrolled: boolean;
+  strong: boolean;
   usable: boolean;
 }
 
@@ -240,15 +241,26 @@ Promise<BiometricAvailability> {
       ? await LocalAuthentication.isEnrolledAsync()
       : false;
 
+  const securityLevel =
+    enrolled
+      ? await LocalAuthentication.getEnrolledLevelAsync()
+      : LocalAuthentication.SecurityLevel.NONE;
+
+  const strong =
+    securityLevel ===
+    LocalAuthentication.SecurityLevel.BIOMETRIC_STRONG;
+
   return {
     hardware,
     enrolled,
-    usable: hardware && enrolled,
+    strong,
+    usable: hardware && enrolled && strong,
   };
 }
 
 export async function authenticateWithBiometrics(
   promptMessage = 'Unlock Messenger Sessions',
+  cancelLabel = 'Use PIN',
 ): Promise<boolean> {
   const availability =
     await getBiometricAvailability();
@@ -260,7 +272,7 @@ export async function authenticateWithBiometrics(
   const result =
     await LocalAuthentication.authenticateAsync({
       promptMessage,
-      cancelLabel: 'Use PIN',
+      cancelLabel,
       disableDeviceFallback: true,
       biometricsSecurityLevel: 'strong',
     });

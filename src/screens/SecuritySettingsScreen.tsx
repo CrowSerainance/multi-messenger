@@ -255,7 +255,9 @@ export function SecuritySettingsScreen({
             <Text style={styles.rowHint}>
               {biometric.usable
                 ? 'Use fingerprint or face after the app locks.'
-                : 'Enroll biometrics in system settings to enable this.'}
+                : biometric.enrolled
+                  ? 'A strong biometric is required.'
+                  : 'Enroll biometrics in system settings to enable this.'}
             </Text>
           </View>
 
