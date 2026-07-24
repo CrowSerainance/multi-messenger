@@ -6,6 +6,7 @@ import {
   createLockConfig,
   getBiometricAvailability,
   loadLockConfig,
+  pinValidationMessage,
   setBiometricEnabled,
   verifyPin,
   type AppLockConfig,
@@ -28,6 +29,10 @@ interface AppLockStore {
   ): Promise<void>;
   unlockWithPin(pin: string): Promise<boolean>;
   unlockWithBiometric(): Promise<boolean>;
+  resetPinWithBiometric(
+    nextPin: string,
+    confirmPin: string,
+  ): Promise<void>;
   lock(): void;
   updatePin(
     currentPin: string,
@@ -46,6 +51,7 @@ export const useAppLockStore =
     biometric: {
       hardware: false,
       enrolled: false,
+      strong: false,
       usable: false,
     },
     error: null,
@@ -151,6 +157,57 @@ export const useAppLockStore =
       });
 
       return true;
+    },
+
+    async resetPinWithBiometric(
+      nextPin,
+      confirmPin,
+    ) {
+      const config = get().config;
+
+      if (!config?.biometricEnabled) {
+        throw new Error(
+          'Biometric PIN recovery was not enabled for this app.',
+        );
+      }
+
+      if (nextPin !== confirmPin) {
+        throw new Error(
+          'PIN entries do not match.',
+        );
+      }
+
+      const validationError =
+        pinValidationMessage(nextPin);
+
+      if (validationError) {
+        throw new Error(validationError);
+      }
+
+      const confirmed =
+        await authenticateWithBiometrics(
+          'Verify identity to create a new PIN',
+          'Cancel',
+        );
+
+      if (!confirmed) {
+        throw new Error(
+          'Biometric verification was cancelled or unsuccessful.',
+        );
+      }
+
+      const nextConfig =
+        await createLockConfig(
+          nextPin,
+          config.biometricEnabled,
+        );
+
+      set({
+        config: nextConfig,
+        unlocked: true,
+        failedAttempts: 0,
+        error: null,
+      });
     },
 
     lock() {

@@ -184,7 +184,9 @@ export function SetupPinScreen({
           <Text style={styles.rowHint}>
             {biometric.usable
               ? 'Use fingerprint or face after setup.'
-              : 'No enrolled biometrics on this device.'}
+              : biometric.enrolled
+                ? 'A strong biometric is required.'
+                : 'No enrolled biometrics on this device.'}
           </Text>
         </View>
 

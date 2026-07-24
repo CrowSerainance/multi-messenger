@@ -24,6 +24,10 @@ import {
 } from '../components/SensitiveScreen';
 
 import {
+  ForgotPinScreen,
+} from './ForgotPinScreen';
+
+import {
   AppButton,
 } from '../ui/AppButton';
 
@@ -73,6 +77,8 @@ export function UnlockScreen() {
 
   const [pin, setPin] = useState('');
   const [busy, setBusy] = useState(false);
+  const [forgotPinOpen, setForgotPinOpen] =
+    useState(false);
   const [cooldownUntil, setCooldownUntil] =
     useState(0);
   const [now, setNow] = useState(
@@ -174,6 +180,16 @@ export function UnlockScreen() {
     cooldownRemainingMs / 1000,
   );
 
+  if (forgotPinOpen) {
+    return (
+      <ForgotPinScreen
+        onCancel={() => {
+          setForgotPinOpen(false);
+        }}
+      />
+    );
+  }
+
   return (
     <SensitiveScreen
       style={[
@@ -256,6 +272,14 @@ export function UnlockScreen() {
               }
             />
           )}
+
+          <AppButton
+            title="Forgot PIN?"
+            variant="ghost"
+            onPress={() => {
+              setForgotPinOpen(true);
+            }}
+          />
         </View>
       )}
     </SensitiveScreen>
