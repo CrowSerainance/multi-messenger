@@ -1,6 +1,7 @@
 package expo.modules.nativecookies
 
 import android.webkit.CookieManager
+import android.webkit.WebStorage
 import expo.modules.kotlin.Promise
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
@@ -46,6 +47,38 @@ class NativeCookiesModule : Module() {
 
     AsyncFunction("flush") {
       cookieManager.flush()
+    }
+
+    /**
+     * Clears Local/Session Storage, IndexedDB, Web SQL and
+     * Application Cache for every origin in the shared
+     * WebView profile.
+     *
+     * This replaces injecting a destructive wipe script into
+     * pages: doing it natively before a WebView mounts cannot
+     * interrupt an in-flight authentication flow, and it
+     * covers every origin at once rather than one origin per
+     * page load.
+     *
+     * Must run on the main thread.
+     */
+    AsyncFunction("clearAllWebStorage") { promise: Promise ->
+      val activity = appContext.currentActivity
+
+      if (activity == null) {
+        WebStorage.getInstance().deleteAllData()
+        promise.resolve(true)
+        return@AsyncFunction
+      }
+
+      activity.runOnUiThread {
+        try {
+          WebStorage.getInstance().deleteAllData()
+          promise.resolve(true)
+        } catch (error: Throwable) {
+          promise.resolve(false)
+        }
+      }
     }
   }
 }

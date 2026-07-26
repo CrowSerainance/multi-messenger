@@ -47,15 +47,28 @@ export function buildStorageGuardScript(
   return `(function () {
   var MARKER = '${MARKER_KEY}';
   var owner = ${owner};
+  var previous = null;
 
   try {
-    if (window.localStorage.getItem(MARKER) === owner) {
+    previous = window.localStorage.getItem(MARKER);
+    if (previous === owner) {
       return;
     }
   } catch (err) {
     return;
   }
 
+  // No marker means this origin's storage was already cleared
+  // natively before the WebView mounted (fresh login or a
+  // completed account switch). Claim it without wiping: a wipe
+  // here would run inside a page that may be mid-authentication
+  // and would destroy the state that page just created.
+  if (previous === null) {
+    try { window.localStorage.setItem(MARKER, owner); } catch (err) {}
+    return;
+  }
+
+  // A different owner's data really is present. Wipe it.
   try { window.localStorage.clear(); } catch (err) {}
   try { window.sessionStorage.clear(); } catch (err) {}
   try { window.localStorage.setItem(MARKER, owner); } catch (err) {}

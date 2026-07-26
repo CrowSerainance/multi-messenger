@@ -38,6 +38,33 @@ export interface CookieBackend {
   flush(): Promise<void>;
 }
 
+/**
+ * Clears all WebView web storage (Local/Session Storage,
+ * IndexedDB, caches) for every origin.
+ *
+ * Android-only today; a no-op elsewhere. Doing this natively
+ * before a WebView mounts is safe, unlike injecting a wipe
+ * script into a page that may be mid-authentication.
+ */
+export async function clearAllWebStorage():
+Promise<boolean> {
+  if (Platform.OS !== 'android') {
+    return false;
+  }
+
+  try {
+    const native =
+      require('../../modules/native-cookies')
+        .default as import('../../modules/native-cookies').NativeCookiesModule;
+
+    return await native.clearAllWebStorage();
+  } catch {
+    // Older builds without the native function must not
+    // break session setup.
+    return false;
+  }
+}
+
 function parseCookieString(
   raw: string,
 ): Cookies {

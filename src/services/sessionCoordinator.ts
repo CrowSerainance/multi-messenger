@@ -13,6 +13,10 @@ import {
 } from './cookieManager';
 
 import {
+  clearAllWebStorage,
+} from './cookieBackend';
+
+import {
   waitForPendingCookieMutations,
 } from './nativeOperation';
 
@@ -68,6 +72,13 @@ Promise<void> {
     await captureCurrentOwnerUnsafe();
     jarOwner = null;
     await clearGlobalCookies();
+
+    // Clear web storage natively, once, before the login
+    // WebView mounts. Injecting a wipe into the login pages
+    // themselves could destroy in-flight authentication state
+    // when the flow crosses between messenger.com and
+    // facebook.com.
+    await clearAllWebStorage();
 
     jarOwner = {
       kind: 'login',
@@ -255,6 +266,11 @@ export async function switchGlobalSession(
 
     jarOwner = null;
     await clearGlobalCookies();
+
+    // Native web-storage clear is the real isolation
+    // mechanism between accounts; the in-page guard is only a
+    // detector for a genuine owner mismatch.
+    await clearAllWebStorage();
 
     try {
       await restoreCookieSnapshot(
