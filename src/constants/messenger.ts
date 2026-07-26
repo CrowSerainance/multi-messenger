@@ -3,16 +3,14 @@ import { Platform } from 'react-native';
 export const MESSENGER_HOME_URL =
   'https://www.messenger.com/';
 
+// messenger.com/login serves mobile clients a marketing /
+// "Get it on Google Play" page with no credential form, so
+// authenticate against Facebook's mobile login instead. It
+// sets the c_user/xs cookies on .facebook.com that the session
+// layer already extracts, and messenger.com shares that
+// session.
 export const MESSENGER_LOGIN_URL =
-  'https://www.messenger.com/login/';
-
-// Messenger's mobile route can collapse the login page into
-// an app/home landing page. Use its supported desktop web flow
-// while adding an account so the credential form is available.
-export const LOGIN_USER_AGENT =
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) ' +
-  'AppleWebKit/537.36 (KHTML, like Gecko) ' +
-  'Chrome/140.0.0.0 Safari/537.36';
+  'https://m.facebook.com/login.php';
 
 export const COOKIE_ORIGINS = [
   'https://www.facebook.com/',
@@ -36,6 +34,26 @@ export const MOBILE_USER_AGENT =
   Platform.OS === 'ios'
     ? IOS_MOBILE_UA
     : ANDROID_MOBILE_UA;
+
+const DESKTOP_UA =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) ' +
+  'AppleWebKit/537.36 (KHTML, like Gecko) ' +
+  'Chrome/140.0.0.0 Safari/537.36';
+
+// The two WebViews need different identities.
+//
+// Login: a desktop UA contradicts the Client Hints Chromium
+// still sends from an Android WebView (Sec-CH-UA-Platform:
+// "Android", mobile=?1). Facebook's login endpoint cross-checks
+// them and answers "Your Request Couldn't be Processed", so the
+// login identity must match the real platform.
+export const LOGIN_USER_AGENT = MOBILE_USER_AGENT;
+
+// Messenger: with a mobile UA, Meta serves the marketing page
+// and deep-links to the native app (intent://…fb-messenger)
+// instead of the web client. A desktop UA is required for the
+// actual Messenger web app to render.
+export const MESSENGER_USER_AGENT = DESKTOP_UA;
 
 export function isLoginUrl(url: string): boolean {
   const normalized = url.toLowerCase();
