@@ -9,6 +9,11 @@ export interface NativeCookiesModule {
   clearAll(): Promise<boolean>;
   /** Persists pending cookie writes to disk. */
   flush(): Promise<void>;
+  /**
+   * Clears Local/Session Storage, IndexedDB, Web SQL and
+   * Application Cache for every origin in the shared profile.
+   */
+  clearAllWebStorage(): Promise<boolean>;
 }
 
 // Throws on any platform where the native module was not built (e.g. iOS,

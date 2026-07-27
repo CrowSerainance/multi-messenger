@@ -27,7 +27,7 @@ import {
   isInAppUrl,
   isLoginUrl,
   MESSENGER_HOME_URL,
-  MOBILE_USER_AGENT,
+  MESSENGER_USER_AGENT,
 } from '../constants/messenger';
 
 import {
@@ -256,7 +256,7 @@ export function MessengerWebView({
         uri: MESSENGER_HOME_URL,
       }}
       userAgent={
-        MOBILE_USER_AGENT
+        MESSENGER_USER_AGENT
       }
       sharedCookiesEnabled
       thirdPartyCookiesEnabled

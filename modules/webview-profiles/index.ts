@@ -15,8 +15,26 @@ export interface WebViewProfileCapability {
   };
 }
 
+export interface ProfileSelfTestResult {
+  ran: boolean;
+  multiProfileSupported: boolean;
+  createdTwoProfiles?: boolean;
+  profileCount?: number;
+  setProfileBeforeLoad?: boolean;
+  cookieIsolation?: boolean;
+  clearOneKeepsOther?: boolean;
+  error?: string;
+  errorMessage?: string;
+}
+
 export interface WebViewProfilesModule {
   getCapability(): Promise<WebViewProfileCapability>;
+  /**
+   * ML-0 isolation self-test: exercises ProfileStore
+   * create/list/delete and setProfile-before-load on a
+   * throwaway WebView. Returns booleans only.
+   */
+  runProfileSelfTest(): Promise<ProfileSelfTestResult>;
 }
 
 // Throws on platforms where the native module was not built.

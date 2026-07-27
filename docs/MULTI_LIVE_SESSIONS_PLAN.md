@@ -48,7 +48,7 @@ Still required before ML-0 exit:
 
 | Document | Role |
 | --- | --- |
-| `../MESSENGER_MULTI_ACCOUNT_WRAPPER_HANDOFF.md` Section 0 | Execution source of truth |
+| `../../MESSENGER_MULTI_ACCOUNT_WRAPPER_HANDOFF.md` Section 0 | Execution source of truth (repo-root's parent directory) |
 | `./MULTI_LIVE_SESSIONS_PLAN.external.md` | Original brainstorming draft |
-| `src/constants/features.ts` | Build-time flags (off) |
-| `modules/webview-profiles` | Android capability probe scaffold |
+| `../src/constants/features.ts` | Build-time flags (off) |
+| `../modules/webview-profiles` | Android capability probe scaffold |

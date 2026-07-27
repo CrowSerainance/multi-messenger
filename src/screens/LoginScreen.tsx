@@ -18,6 +18,7 @@ import {
 
 import {
   isHttpUrl,
+  isLoginUrl,
   LOGIN_USER_AGENT,
   MESSENGER_LOGIN_URL,
 } from '../constants/messenger';
@@ -54,17 +55,7 @@ import {
 
 import {
   buildStorageClaimScript,
-  buildStorageGuardScript,
-  LOGIN_STORAGE_OWNER,
 } from '../services/webStorageIsolation';
-
-// Wipes the previous owner's web storage as
-// soon as the login page loads, so a new login
-// never sees another account's site data.
-const LOGIN_STORAGE_GUARD =
-  buildStorageGuardScript(
-    LOGIN_STORAGE_OWNER,
-  );
 
 interface Props {
   reauthAccountId?: string;
@@ -394,9 +385,6 @@ export function LoginScreen({
         thirdPartyCookiesEnabled
         domStorageEnabled
         javaScriptEnabled
-        injectedJavaScriptBeforeContentLoaded={
-          LOGIN_STORAGE_GUARD
-        }
         startInLoadingState
         renderLoading={() => (
           <View style={styles.center}>
@@ -429,6 +417,31 @@ export function LoginScreen({
         }}
         onNavigationStateChange={() => {
           void detectLogin();
+        }}
+        onError={({ nativeEvent }) => {
+          // Surface transport failures instead of
+          // leaving a blank WebView with no
+          // explanation.
+          setError(
+            `Could not load the login page (${
+              nativeEvent.code ?? 'network'
+            }). ${
+              nativeEvent.description ?? ''
+            }`.trim(),
+          );
+        }}
+        onHttpError={({ nativeEvent }) => {
+          // Sub-resource 4xx/5xx are normal on
+          // Facebook; only report a failure of the
+          // main login document.
+          if (
+            nativeEvent.url &&
+            isLoginUrl(nativeEvent.url)
+          ) {
+            setError(
+              `Facebook returned HTTP ${nativeEvent.statusCode} for the login page.`,
+            );
+          }
         }}
       />
 

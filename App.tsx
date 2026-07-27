@@ -74,6 +74,11 @@ import {
   useAppLockStore,
 } from './src/store/appLockStore';
 
+import {
+  getWebViewProfileCapabilityForDiagnostics,
+  runWebViewProfileSelfTest,
+} from './src/services/profileBackend';
+
 type Route =
   | {
       name: 'home';
@@ -167,6 +172,44 @@ export default function App() {
   useEffect(() => {
     void bootstrapLock();
   }, [bootstrapLock]);
+
+  // ML-0 capability spike: development-only. Records the
+  // real AndroidX WebKit MULTI_PROFILE result and runs the
+  // profile isolation self-test on the actual device/
+  // provider. Logs redacted booleans/versions only (no
+  // session data) and never runs in a release build.
+  useEffect(() => {
+    if (!__DEV__) {
+      return;
+    }
+
+    void (async () => {
+      try {
+        console.log('ML0_PROBE_START');
+
+        const capability =
+          await getWebViewProfileCapabilityForDiagnostics();
+        console.log(
+          'ML0_PROFILE_CAPABILITY',
+          JSON.stringify(capability),
+        );
+
+        const selfTest =
+          await runWebViewProfileSelfTest();
+        console.log(
+          'ML0_PROFILE_SELFTEST',
+          JSON.stringify(selfTest),
+        );
+      } catch (error) {
+        console.log(
+          'ML0_PROBE_ERROR',
+          error instanceof Error
+            ? error.message
+            : String(error),
+        );
+      }
+    })();
+  }, []);
 
   // Sessions stay unread until the app is unlocked.
   useEffect(() => {
