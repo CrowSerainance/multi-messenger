@@ -13,6 +13,24 @@ import {
   type BiometricAvailability,
 } from '../services/appLock';
 
+/**
+ * How long a backgrounded session may be resumed
+ * without re-entering the PIN.
+ *
+ * Locking on every background transition made the
+ * app demand a PIN constantly during normal use —
+ * a permission dialog, an external link, or a brief
+ * app switch each forced a full re-entry. The lock
+ * still engages immediately (so the app is locked
+ * while backgrounded, and the app-switcher preview
+ * stays protected by FLAG_SECURE); this only allows
+ * a silent resume when the user returns quickly.
+ *
+ * `lockedAt` lives in memory only, so a killed or
+ * restarted process always requires the PIN.
+ */
+export const LOCK_GRACE_MS = 60_000;
+
 interface AppLockStore {
   ready: boolean;
   unlocked: boolean;
@@ -20,6 +38,8 @@ interface AppLockStore {
   biometric: BiometricAvailability;
   error: string | null;
   failedAttempts: number;
+  /** Epoch ms of the last background-triggered lock. */
+  lockedAt: number | null;
 
   bootstrap(): Promise<void>;
   setupPin(
@@ -34,6 +54,12 @@ interface AppLockStore {
     confirmPin: string,
   ): Promise<void>;
   lock(): void;
+  /**
+   * Silently restores an in-memory lock if the user
+   * returned within the grace window. Returns true
+   * when the session was resumed.
+   */
+  resumeIfWithinGrace(): boolean;
   updatePin(
     currentPin: string,
     nextPin: string,
@@ -56,6 +82,7 @@ export const useAppLockStore =
     },
     error: null,
     failedAttempts: 0,
+    lockedAt: null,
 
     async bootstrap() {
       try {
@@ -70,6 +97,7 @@ export const useAppLockStore =
           config,
           biometric,
           unlocked: false,
+          lockedAt: null,
           error: null,
         });
       } catch (error) {
@@ -101,6 +129,7 @@ export const useAppLockStore =
       set({
         config,
         unlocked: true,
+        lockedAt: null,
         failedAttempts: 0,
         error: null,
       });
@@ -129,6 +158,7 @@ export const useAppLockStore =
 
       set({
         unlocked: true,
+        lockedAt: null,
         failedAttempts: 0,
         error: null,
       });
@@ -152,6 +182,7 @@ export const useAppLockStore =
 
       set({
         unlocked: true,
+        lockedAt: null,
         failedAttempts: 0,
         error: null,
       });
@@ -205,6 +236,7 @@ export const useAppLockStore =
       set({
         config: nextConfig,
         unlocked: true,
+        lockedAt: null,
         failedAttempts: 0,
         error: null,
       });
@@ -217,8 +249,44 @@ export const useAppLockStore =
 
       set({
         unlocked: false,
+        lockedAt: Date.now(),
         error: null,
       });
+    },
+
+    resumeIfWithinGrace() {
+      const {
+        config,
+        unlocked,
+        lockedAt,
+      } = get();
+
+      if (
+        !config ||
+        unlocked ||
+        lockedAt === null
+      ) {
+        return false;
+      }
+
+      if (
+        Date.now() - lockedAt >
+        LOCK_GRACE_MS
+      ) {
+        // Too long; require the PIN and stop
+        // offering a silent resume.
+        set({ lockedAt: null });
+        return false;
+      }
+
+      set({
+        unlocked: true,
+        lockedAt: null,
+        failedAttempts: 0,
+        error: null,
+      });
+
+      return true;
     },
 
     async updatePin(
