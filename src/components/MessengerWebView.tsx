@@ -333,6 +333,16 @@ export function MessengerWebView({
         // fb:// or intent:// are dropped so
         // they cannot crash the WebView.
         if (isHttpUrl(url)) {
+          if (__DEV__) {
+            // Host only: full URLs carry tokens.
+            console.log(
+              'EXTERNAL_OPEN',
+              /^https?:\/\/([^/:?#]+)/i.exec(
+                url,
+              )?.[1] ?? 'unknown',
+            );
+          }
+
           Linking.openURL(url).catch(
             () => {
               // Nothing can handle the URL.

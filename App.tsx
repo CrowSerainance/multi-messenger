@@ -271,13 +271,46 @@ export default function App() {
   }, [unlocked, hydrated, switchAccount]);
 
   // Relock when the app fully backgrounds so
-  // returning always requires PIN/biometric.
+  // returning requires PIN/biometric.
   // Use background only (not inactive) to avoid
   // locking during the biometric system sheet.
+  //
+  // Returning within LOCK_GRACE_MS resumes
+  // silently, so a permission dialog, an external
+  // link, or a brief app switch does not force a
+  // PIN re-entry mid-session.
   useEffect(() => {
     const onChange = (
       nextState: AppStateStatus,
     ) => {
+      if (__DEV__) {
+        console.log(
+          'APPSTATE',
+          nextState,
+        );
+      }
+
+      if (nextState === 'active') {
+        const resumed =
+          useAppLockStore
+            .getState()
+            .resumeIfWithinGrace();
+
+        if (__DEV__) {
+          console.log(
+            'APPLOCK resume',
+            JSON.stringify({
+              resumed,
+              unlocked:
+                useAppLockStore.getState()
+                  .unlocked,
+            }),
+          );
+        }
+
+        return;
+      }
+
       if (nextState !== 'background') {
         return;
       }
@@ -292,6 +325,10 @@ export default function App() {
         .catch(() => undefined)
         .finally(() => {
           lockApp();
+
+          if (__DEV__) {
+            console.log('APPLOCK locked');
+          }
         });
     };
 
