@@ -279,6 +279,13 @@ export default function App() {
   // silently, so a permission dialog, an external
   // link, or a brief app switch does not force a
   // PIN re-entry mid-session.
+  //
+  // Never lock while an account switch is in
+  // flight: the WebView remount is heavy and some
+  // devices briefly report `background` under
+  // memory pressure. Locking then unmounted the
+  // Messenger tree and made every swap feel like
+  // a cold PIN + empty history reload.
   useEffect(() => {
     const onChange = (
       nextState: AppStateStatus,
@@ -321,9 +328,30 @@ export default function App() {
         return;
       }
 
+      if (
+        useAccountStore.getState().isSwitching
+      ) {
+        if (__DEV__) {
+          console.log(
+            'APPLOCK skip-lock-while-switching',
+          );
+        }
+
+        return;
+      }
+
       void persistActiveSession()
         .catch(() => undefined)
         .finally(() => {
+          // Re-check: a switch may have started
+          // while persistence was in flight.
+          if (
+            useAccountStore.getState()
+              .isSwitching
+          ) {
+            return;
+          }
+
           lockApp();
 
           if (__DEV__) {
@@ -342,6 +370,21 @@ export default function App() {
       subscription.remove();
     };
   }, [lockApp, persistActiveSession]);
+
+  // After the first successful unlock + hydrate,
+  // keep the session UI mounted under a PIN
+  // overlay. Replacing the tree on every lock was
+  // destroying the live WebView and forcing a full
+  // Messenger reload (empty/missing history until
+  // Meta re-synced).
+  const [sessionSurfaceReady, setSessionSurfaceReady] =
+    useState(false);
+
+  useEffect(() => {
+    if (unlocked && hydrated && !resuming) {
+      setSessionSurfaceReady(true);
+    }
+  }, [unlocked, hydrated, resuming]);
 
   if (!lockReady) {
     return (
@@ -365,27 +408,13 @@ export default function App() {
     );
   }
 
-  if (!unlocked) {
-    return (
-      <SafeAreaProvider>
-        <StatusBar barStyle="dark-content" />
-        <UnlockScreen />
-      </SafeAreaProvider>
-    );
-  }
-
-  if (!hydrated || resuming) {
-    return (
-      <SafeAreaProvider>
-        <View style={styles.loading}>
-          <ActivityIndicator
-            size="large"
-            color={colors.primary}
-          />
-        </View>
-      </SafeAreaProvider>
-    );
-  }
+  const showUnlockGate = !unlocked;
+  const showBootLoading =
+    unlocked &&
+    (!hydrated ||
+      (resuming && !sessionSurfaceReady));
+  const showSessionSurface =
+    sessionSurfaceReady && hydrated;
 
   const openAccount =
     async (
@@ -627,9 +656,39 @@ export default function App() {
         barStyle="dark-content"
       />
 
-      <SensitiveScreen>
-        {content}
-      </SensitiveScreen>
+      {showBootLoading && (
+        <View style={styles.loading}>
+          <ActivityIndicator
+            size="large"
+            color={colors.primary}
+          />
+        </View>
+      )}
+
+      {showSessionSurface && (
+        <View
+          style={styles.sessionSurface}
+          pointerEvents={
+            unlocked ? 'auto' : 'none'
+          }
+        >
+          <SensitiveScreen>
+            {content}
+          </SensitiveScreen>
+        </View>
+      )}
+
+      {showUnlockGate && (
+        <View
+          style={
+            showSessionSurface
+              ? styles.lockOverlay
+              : styles.lockFullscreen
+          }
+        >
+          <UnlockScreen />
+        </View>
+      )}
     </SafeAreaProvider>
   );
 }
@@ -641,5 +700,18 @@ const styles =
       alignItems: 'center',
       justifyContent: 'center',
       backgroundColor: colors.background,
+    },
+
+    sessionSurface: {
+      flex: 1,
+    },
+
+    lockFullscreen: {
+      flex: 1,
+    },
+
+    lockOverlay: {
+      ...StyleSheet.absoluteFill,
+      zIndex: 100,
     },
   });

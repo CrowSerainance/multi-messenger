@@ -76,6 +76,10 @@ const IN_APP_HOSTS = [
   'fb.com',
   'fbcdn.net',
   'fbsbx.com',
+  'facebook.net',
+  'meta.com',
+  'meta.ai',
+  'instagram.com',
 ] as const;
 
 function hostOfUrl(url: string): string | null {
