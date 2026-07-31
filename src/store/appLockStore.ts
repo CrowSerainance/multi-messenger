@@ -29,7 +29,7 @@ import {
  * `lockedAt` lives in memory only, so a killed or
  * restarted process always requires the PIN.
  */
-export const LOCK_GRACE_MS = 60_000;
+export const LOCK_GRACE_MS = 120_000;
 
 interface AppLockStore {
   ready: boolean;
