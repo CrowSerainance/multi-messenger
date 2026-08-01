@@ -12,6 +12,13 @@ export interface Account {
   updatedAt: number;
   status: AccountStatus;
   lastRefreshAt?: number;
+  /**
+   * Stable isolated WebView profile name (ML-1).
+   * Generated once when the account first runs in
+   * isolated mode; never derived from user data.
+   * Absent for accounts that only ever ran legacy.
+   */
+  profileId?: string;
 }
 
 export interface StoredCookie extends Cookie {

@@ -148,6 +148,104 @@ Promise<WebViewProfileCapabilityReport> {
   return probeCapability();
 }
 
+export type SessionMode = 'legacy' | 'isolated';
+
+let sessionModePromise: Promise<SessionMode> | null =
+  null;
+
+/**
+ * Decides once per process whether accounts run in
+ * isolated WebView profiles or the legacy shared jar.
+ * Isolated requires: flag on, Android, native module
+ * present, and MULTI_PROFILE supported by the WebView
+ * provider. Anything else falls back to legacy.
+ */
+export function resolveSessionMode():
+Promise<SessionMode> {
+  if (!sessionModePromise) {
+    sessionModePromise =
+      getWebViewProfileCapability()
+        .then((capability): SessionMode =>
+          capability.available &&
+          capability.multiProfileSupported
+            ? 'isolated'
+            : 'legacy',
+        )
+        .catch((): SessionMode => 'legacy');
+  }
+
+  return sessionModePromise;
+}
+
+export type {
+  ProfileCookieWrite,
+} from '../../modules/webview-profiles';
+
+/**
+ * Announces the profile the NEXT created WebView must
+ * bind to. Await this BEFORE mounting/remounting the
+ * WebView so the ordering is deterministic. Null means
+ * the default profile.
+ */
+export async function setNextWebViewProfile(
+  profileName: string | null,
+): Promise<void> {
+  await resolveNativeModule()
+    .setNextWebViewProfile(profileName);
+}
+
+/**
+ * Safe reset used by flows that must run in the default
+ * profile (login). No-op when isolated mode is off or
+ * unavailable.
+ */
+export async function resetNextWebViewProfile():
+Promise<void> {
+  if (
+    (await resolveSessionMode()) !== 'isolated'
+  ) {
+    return;
+  }
+
+  try {
+    await resolveNativeModule()
+      .setNextWebViewProfile(null);
+  } catch {
+    // Isolated mode implies the module resolved once
+    // already; a reset failure must not block login.
+  }
+}
+
+export async function getProfileCookieHeaders(
+  profileName: string,
+  urls: string[],
+): Promise<Record<string, string>> {
+  return resolveNativeModule()
+    .getProfileCookies(profileName, urls);
+}
+
+export async function setProfileCookies(
+  profileName: string,
+  cookies: import('../../modules/webview-profiles').ProfileCookieWrite[],
+): Promise<void> {
+  await resolveNativeModule()
+    .setProfileCookies(profileName, cookies);
+}
+
+export async function clearProfileCookies(
+  profileName: string,
+): Promise<void> {
+  await resolveNativeModule()
+    .clearProfileCookies(profileName);
+}
+
+export async function deleteWebViewProfile(
+  profileName: string,
+): Promise<boolean> {
+  return resolveNativeModule()
+    .deleteProfile(profileName);
+}
+
 export interface ProfileSelfTestReport {
   ran: boolean;
   multiProfileSupported: boolean;

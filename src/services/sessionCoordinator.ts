@@ -21,6 +21,10 @@ import {
 } from './nativeOperation';
 
 import {
+  resetNextWebViewProfile,
+} from './profileBackend';
+
+import {
   isNativeOperationTimeout,
   SessionStateError,
 } from './sessionErrors';
@@ -79,6 +83,12 @@ Promise<void> {
     // when the flow crosses between messenger.com and
     // facebook.com.
     await clearAllWebStorage();
+
+    // Isolated mode: login always runs in the DEFAULT
+    // profile (the shared jar just cleared above), so the
+    // pending-profile holder must not leak a previous
+    // account's profile into the login WebView.
+    await resetNextWebViewProfile();
 
     jarOwner = {
       kind: 'login',

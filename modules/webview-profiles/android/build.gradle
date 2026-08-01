@@ -17,4 +17,9 @@ android {
 dependencies {
   // Match the major line already pulled by react-native-webview.
   implementation 'androidx.webkit:webkit:1.14.0'
+
+  // ML-1: the pending-profile registry lives inside the patched
+  // react-native-webview (profile binding must happen at WebView
+  // creation time, which only that library controls).
+  implementation project(':react-native-webview')
 }
