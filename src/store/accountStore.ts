@@ -28,6 +28,17 @@ import {
   SessionExpiredError,
 } from '../services/cookieManager';
 
+import {
+  resolveSessionMode,
+} from '../services/profileBackend';
+
+import {
+  activateIsolatedSession,
+  adoptLoginSnapshotIntoProfile,
+  deleteAccountProfile,
+  isIsolatedSessionAuthenticated,
+} from '../services/profileCoordinator';
+
 const ACCOUNT_INDEX_KEY =
   'messenger.accounts.index.v1';
 
@@ -97,6 +108,52 @@ interface AccountStore {
   removeAccount(
     accountId: string,
   ): Promise<void>;
+}
+
+function newProfileId(): string {
+  return `acct-${Crypto.randomUUID()}`;
+}
+
+/**
+ * Puts a just-claimed login session into the account's
+ * isolated profile (isolated mode only). On any failure
+ * the shared jar still holds the live session and the
+ * pending-profile holder was never changed, so the
+ * Messenger WebView simply mounts against the default
+ * profile like legacy — never a broken state.
+ */
+async function adoptLoginIntoIsolatedProfile(
+  accountId: string,
+  existingProfileId?: string,
+): Promise<string | undefined> {
+  if (
+    (await resolveSessionMode()) !== 'isolated'
+  ) {
+    return existingProfileId;
+  }
+
+  const profileId =
+    existingProfileId ?? newProfileId();
+
+  try {
+    await adoptLoginSnapshotIntoProfile(
+      accountId,
+      profileId,
+    );
+  } catch {
+    return existingProfileId;
+  }
+
+  // The profile owns the session now; scrub the copy
+  // left in the shared jar.
+  try {
+    await releaseOwnedSession(accountId);
+  } catch {
+    // Residue in the shared jar is cleared by the
+    // next login flow anyway.
+  }
+
+  return profileId;
 }
 
 async function saveIndex(
@@ -195,6 +252,11 @@ export const useAccountStore =
 
       await claimLoginSession(accountId);
 
+      const profileId =
+        await adoptLoginIntoIsolatedProfile(
+          accountId,
+        );
+
       const now = Date.now();
 
       const account: Account = {
@@ -204,6 +266,9 @@ export const useAccountStore =
         updatedAt: now,
         status: 'ready',
         lastRefreshAt: now,
+        ...(profileId
+          ? { profileId }
+          : {}),
       };
 
       const nextAccounts = [
@@ -241,6 +306,15 @@ export const useAccountStore =
     ) {
       await claimLoginSession(accountId);
 
+      const profileId =
+        await adoptLoginIntoIsolatedProfile(
+          accountId,
+          get().accounts.find(
+            (account) =>
+              account.id === accountId,
+          )?.profileId,
+        );
+
       const now = Date.now();
 
       const nextAccounts =
@@ -251,6 +325,9 @@ export const useAccountStore =
                 status: 'ready' as const,
                 updatedAt: now,
                 lastRefreshAt: now,
+                ...(profileId
+                  ? { profileId }
+                  : {}),
               }
             : account,
         );
@@ -304,9 +381,32 @@ export const useAccountStore =
       });
 
       try {
-        await switchGlobalSession(
-          accountId,
-        );
+        const mode =
+          await resolveSessionMode();
+
+        let switchedProfileId:
+          | string
+          | undefined;
+
+        if (mode === 'isolated') {
+          // Isolated switch: no cookie wipe, no web
+          // storage wipe. The target account's
+          // profile keeps its own cookies, storage,
+          // and cached chat history; the next WebView
+          // simply binds to it.
+          switchedProfileId =
+            target.profileId ??
+            newProfileId();
+
+          await activateIsolatedSession(
+            accountId,
+            switchedProfileId,
+          );
+        } else {
+          await switchGlobalSession(
+            accountId,
+          );
+        }
 
         const nextAccounts =
           get().accounts.map((account) =>
@@ -315,6 +415,12 @@ export const useAccountStore =
                   ...account,
                   status: 'ready' as const,
                   updatedAt: Date.now(),
+                  ...(switchedProfileId
+                    ? {
+                        profileId:
+                          switchedProfileId,
+                      }
+                    : {}),
                 }
               : account,
           );
@@ -373,10 +479,33 @@ export const useAccountStore =
         return 'no-active';
       }
 
-      const result =
-        await persistOwnedSession(
+      const activeProfileId =
+        get().accounts.find(
+          (account) =>
+            account.id === accountId,
+        )?.profileId;
+
+      let result: SessionRefreshResult;
+
+      if (
+        activeProfileId &&
+        (await resolveSessionMode()) ===
+          'isolated'
+      ) {
+        // The profile itself is the durable store in
+        // isolated mode; nothing to snapshot. Just
+        // verify the session is still authenticated.
+        result =
+          (await isIsolatedSessionAuthenticated(
+            activeProfileId,
+          ))
+            ? 'saved'
+            : 'unauthenticated';
+      } else {
+        result = await persistOwnedSession(
           accountId,
         );
+      }
 
       if (result === 'saved') {
         const nextAccounts =
@@ -538,6 +667,25 @@ export const useAccountStore =
     async forceClearCookies() {
       await forceClearGlobalSession();
 
+      // In isolated mode each account also holds its
+      // own profile jar; a panic clear must empty
+      // those too. Vault snapshots survive, so a
+      // later switch restores sessions exactly like
+      // legacy.
+      if (
+        (await resolveSessionMode()) ===
+        'isolated'
+      ) {
+        for (const account of get()
+          .accounts) {
+          if (account.profileId) {
+            await deleteAccountProfile(
+              account.profileId,
+            );
+          }
+        }
+      }
+
       set((state) => ({
         activeAccountId: null,
         webViewEpoch:
@@ -552,6 +700,12 @@ export const useAccountStore =
     },
 
     async removeAccount(accountId) {
+      const removedProfileId =
+        get().accounts.find(
+          (account) =>
+            account.id === accountId,
+        )?.profileId;
+
       const remaining =
         get().accounts.filter(
           (account) =>
@@ -579,6 +733,14 @@ export const useAccountStore =
       await deleteSessionSnapshot(
         accountId,
       );
+
+      if (removedProfileId) {
+        // Best-effort: clears the profile's cookies
+        // and deletes it when no WebView holds it.
+        await deleteAccountProfile(
+          removedProfileId,
+        );
+      }
 
       await saveIndex(
         remaining,

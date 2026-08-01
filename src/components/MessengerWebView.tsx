@@ -35,6 +35,14 @@ import {
 } from '../services/cookieManager';
 
 import {
+  resolveSessionMode,
+} from '../services/profileBackend';
+
+import {
+  isIsolatedSessionAuthenticated,
+} from '../services/profileCoordinator';
+
+import {
   useAccountStore,
 } from '../store/accountStore';
 
@@ -73,6 +81,15 @@ export function MessengerWebView({
     useAccountStore(
       (state) =>
         state.persistActiveSession,
+    );
+
+  const profileId =
+    useAccountStore(
+      (state) =>
+        state.accounts.find(
+          (account) =>
+            account.id === accountId,
+        )?.profileId,
     );
 
   // The store persist path also records the
@@ -226,8 +243,16 @@ export function MessengerWebView({
         let stillAuthenticated: boolean;
 
         try {
+          // Isolated accounts authenticate against
+          // their own profile jar, not the shared one.
           stillAuthenticated =
-            await isCurrentJarAuthenticated();
+            profileId &&
+            (await resolveSessionMode()) ===
+              'isolated'
+              ? await isIsolatedSessionAuthenticated(
+                  profileId,
+                )
+              : await isCurrentJarAuthenticated();
         } catch {
           // A native cookie read failure is not
           // evidence that the account expired.
@@ -244,7 +269,7 @@ export function MessengerWebView({
           onExpired();
         }
       },
-      [onExpired],
+      [onExpired, profileId],
     );
 
   return (

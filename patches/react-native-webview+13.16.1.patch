@@ -1,0 +1,64 @@
+diff --git a/node_modules/react-native-webview/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewManagerImpl.kt b/node_modules/react-native-webview/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewManagerImpl.kt
+index f83033b..a83a53b 100644
+--- a/node_modules/react-native-webview/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewManagerImpl.kt
++++ b/node_modules/react-native-webview/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewManagerImpl.kt
+@@ -15,7 +15,9 @@ import android.webkit.CookieManager
+ import android.webkit.DownloadListener
+ import android.webkit.WebSettings
+ import android.webkit.WebView
++import androidx.webkit.ProfileStore
+ import androidx.webkit.WebSettingsCompat
++import androidx.webkit.WebViewCompat
+ import androidx.webkit.WebViewFeature
+ import com.facebook.react.bridge.ReadableArray
+ import com.facebook.react.bridge.ReadableMap
+@@ -31,6 +33,38 @@ import java.util.Locale
+ 
+ val invalidCharRegex = "[\\\\/%\"]".toRegex()
+ 
++/**
++ * Local patch: lets the host app route the next created WebView into an
++ * AndroidX WebKit profile (multi-account isolation). The profile name is
++ * set by the app's WebViewProfiles expo module BEFORE the WebView
++ * component mounts; the binding must happen before the first navigation,
++ * which is why it lives at WebView creation time. A null name means the
++ * default profile (normal behavior).
++ */
++object RNCWebViewProfileRegistry {
++    private const val TAG = "RNCWebViewProfiles"
++
++    @Volatile
++    @JvmStatic
++    var pendingProfileName: String? = null
++
++    @JvmStatic
++    fun bindPendingProfile(webView: WebView) {
++        val profileName = pendingProfileName ?: return
++        try {
++            if (WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)) {
++                ProfileStore.getInstance().getOrCreateProfile(profileName)
++                WebViewCompat.setProfile(webView, profileName)
++                Log.i(TAG, "Bound new WebView to an isolated profile")
++            } else {
++                Log.w(TAG, "MULTI_PROFILE unsupported; WebView uses the default profile")
++            }
++        } catch (error: Throwable) {
++            Log.e(TAG, "Failed to bind WebView profile", error)
++        }
++    }
++}
++
+ class RNCWebViewManagerImpl(private val newArch: Boolean = false) {
+     companion object {
+         const val NAME = "RNCWebView"
+@@ -60,7 +94,9 @@ class RNCWebViewManagerImpl(private val newArch: Boolean = false) {
+         "Cannot download files as permission was denied. Please provide permission to write to storage, in order to download files."
+ 
+     fun createRNCWebViewInstance(context: ThemedReactContext): RNCWebView {
+-        return RNCWebView(context)
++        val webView = RNCWebView(context)
++        RNCWebViewProfileRegistry.bindPendingProfile(webView)
++        return webView
+     }
+ 
+     fun createViewInstance(context: ThemedReactContext): RNCWebViewWrapper {
