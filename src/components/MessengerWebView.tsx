@@ -290,9 +290,19 @@ export function MessengerWebView({
       pullToRefreshEnabled
       allowsBackForwardNavigationGestures
       injectedJavaScriptBeforeContentLoaded={
-        storageGuardScript
+        // Native profiles already isolate storage.
+        // The legacy in-page wipe/reload guard causes
+        // empty-state loading loops after a profile
+        // remount and must stay off in isolated mode.
+        profileId
+          ? undefined
+          : storageGuardScript
       }
       onMessage={(event) => {
+        if (profileId) {
+          return;
+        }
+
         // After a cross-account wipe, reload
         // once so the page restarts against the
         // cleaned storage profile (and any

@@ -214,6 +214,29 @@ class WebViewProfilesModule : Module() {
       }
     }
 
+    // ML-1: prepare a profile for login — wipe THAT profile's
+    // cookies and web storage only. Never touches other accounts'
+    // profiles or the default jar.
+    AsyncFunction("clearProfileData") { profileName: String, promise: Promise ->
+      onUiThread(promise) {
+        requireMultiProfile()
+        val profile = ProfileStore.getInstance().getOrCreateProfile(profileName)
+
+        try {
+          profile.webStorage.deleteAllData()
+        } catch (error: Throwable) {
+          Log.w(ML1_LOG_TAG, "profile webStorage clear failed", error)
+        }
+
+        val cookieManager = profile.cookieManager
+        cookieManager.removeAllCookies {
+          cookieManager.flush()
+          Log.i(ML1_LOG_TAG, "cleared one profile for login")
+          promise.resolve(null)
+        }
+      }
+    }
+
     // ML-1: best-effort profile deletion (account removal).
     // Deleting a profile whose WebView is still alive throws;
     // callers treat `false` as "retry later / ignore".

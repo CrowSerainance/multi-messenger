@@ -239,6 +239,13 @@ export async function clearProfileCookies(
     .clearProfileCookies(profileName);
 }
 
+export async function clearProfileData(
+  profileName: string,
+): Promise<void> {
+  await resolveNativeModule()
+    .clearProfileData(profileName);
+}
+
 export async function deleteWebViewProfile(
   profileName: string,
 ): Promise<boolean> {
