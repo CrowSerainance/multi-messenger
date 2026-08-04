@@ -67,6 +67,14 @@ export interface WebViewProfilesModule {
     profileName: string,
   ): Promise<void>;
 
+  /**
+   * Clears one profile's cookies + web storage.
+   * Used before login into that profile.
+   */
+  clearProfileData(
+    profileName: string,
+  ): Promise<void>;
+
   /** Best-effort; false when the profile is still in use. */
   deleteProfile(
     profileName: string,

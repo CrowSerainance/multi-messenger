@@ -1,3 +1,7 @@
+import {
+  COOKIE_ORIGINS,
+} from '../constants/messenger';
+
 import type {
   CookieSnapshot,
   StoredCookie,
@@ -5,14 +9,17 @@ import type {
 
 import {
   loadSessionSnapshot,
+  saveSessionSnapshot,
 } from './cookieVault';
 
 import {
+  hasAuthenticationCookies,
   SessionExpiredError,
-} from './sessionErrors';
+} from './cookieManager';
 
 import {
   clearProfileCookies,
+  clearProfileData,
   deleteWebViewProfile,
   getProfileCookieHeaders,
   setNextWebViewProfile,
@@ -23,16 +30,13 @@ import {
 /**
  * Isolated-profile session coordinator (ML-1).
  *
- * Legacy switching wipes the one shared cookie jar and
- * all web storage on every swap, which is why chat
- * history had to re-sync each time. In isolated mode
- * every account owns a native WebView profile: cookies,
- * local/session storage, IndexedDB, and the HTTP cache
- * all persist per account, so a switch is just "bind
- * the next WebView to the target account's profile".
- *
- * All operations are serialized on one promise chain so
- * a switch can never interleave with a migration.
+ * Login and Messenger for an account both run inside
+ * that account's native WebView profile. Cookie copies
+ * through the default jar are avoided: Android's
+ * CookieManager only exposes name=value on read, so a
+ * copy drops Domain/expiry and Meta then treats the
+ * session as invalid — the "one stays logged in, the
+ * other logs out" failure mode.
  */
 
 let operationTail: Promise<unknown> =
@@ -53,8 +57,44 @@ function serialized<T>(
 
 const AUTH_CHECK_URLS = [
   'https://www.facebook.com/',
+  'https://m.facebook.com/',
   'https://www.messenger.com/',
+  'https://messenger.com/',
 ] as const;
+
+function hostFromOrigin(origin: string): string {
+  return origin
+    .replace(/^https?:\/\//i, '')
+    .split('/')[0]
+    .toLowerCase();
+}
+
+/**
+ * Android cookie reads omit Domain. Infer the cookie
+ * jar scope from the origin we queried so restores
+ * remain valid across facebook/messenger subdomains.
+ */
+function inferCookieDomain(
+  origin: string,
+): string | undefined {
+  const host = hostFromOrigin(origin);
+
+  if (
+    host === 'facebook.com' ||
+    host.endsWith('.facebook.com')
+  ) {
+    return '.facebook.com';
+  }
+
+  if (
+    host === 'messenger.com' ||
+    host.endsWith('.messenger.com')
+  ) {
+    return '.messenger.com';
+  }
+
+  return undefined;
+}
 
 function cookieNamesFromHeaders(
   headers: Record<string, string>,
@@ -111,12 +151,16 @@ function isExpired(
 function buildCookieWrite(
   cookie: StoredCookie,
 ): ProfileCookieWrite {
+  const domain =
+    cookie.domain ??
+    inferCookieDomain(cookie.origin);
+
   const parts = [
     `${cookie.name}=${cookie.value}`,
   ];
 
-  if (cookie.domain) {
-    parts.push(`Domain=${cookie.domain}`);
+  if (domain) {
+    parts.push(`Domain=${domain}`);
   }
 
   parts.push(`Path=${cookie.path ?? '/'}`);
@@ -131,7 +175,7 @@ function buildCookieWrite(
     }
   }
 
-  if (cookie.secure) {
+  if (cookie.secure !== false) {
     parts.push('Secure');
   }
 
@@ -145,6 +189,78 @@ function buildCookieWrite(
   };
 }
 
+function cookieIdentity(
+  cookie: StoredCookie,
+): string {
+  return [
+    cookie.name,
+    cookie.domain ??
+      inferCookieDomain(cookie.origin) ??
+      hostFromOrigin(cookie.origin),
+    cookie.path ?? '/',
+  ].join('|');
+}
+
+/**
+ * Reads name=value pairs from a profile jar across
+ * Messenger cookie origins and rebuilds StoredCookie
+ * records with inferred domains for vault backup.
+ */
+export async function extractCookiesFromProfile(
+  profileId: string,
+): Promise<StoredCookie[]> {
+  const headers =
+    await getProfileCookieHeaders(
+      profileId,
+      [...COOKIE_ORIGINS],
+    );
+
+  const result =
+    new Map<string, StoredCookie>();
+
+  for (const [origin, header] of Object.entries(
+    headers,
+  )) {
+    if (!header) {
+      continue;
+    }
+
+    const domain = inferCookieDomain(origin);
+
+    for (const pair of header.split(';')) {
+      const separator = pair.indexOf('=');
+
+      if (separator <= 0) {
+        continue;
+      }
+
+      const name = pair
+        .slice(0, separator)
+        .trim();
+      const value = pair
+        .slice(separator + 1)
+        .trim();
+
+      if (!name) {
+        continue;
+      }
+
+      const stored: StoredCookie = {
+        name,
+        value,
+        origin,
+        path: '/',
+        secure: true,
+        ...(domain ? { domain } : {}),
+      };
+
+      result.set(cookieIdentity(stored), stored);
+    }
+  }
+
+  return [...result.values()];
+}
+
 async function importSnapshotUnsafe(
   profileId: string,
   snapshot: CookieSnapshot,
@@ -154,21 +270,12 @@ async function importSnapshotUnsafe(
       (cookie) => !isExpired(cookie),
     );
 
-  const names = new Set(
-    usableCookies.map((cookie) => cookie.name),
-  );
-
-  if (
-    !names.has('c_user') ||
-    !names.has('xs')
-  ) {
+  if (!hasAuthenticationCookies(usableCookies)) {
     throw new SessionExpiredError(
       'Saved authentication cookies have expired.',
     );
   }
 
-  // Old contents go first so a reauthentication can
-  // never mix a fresh xs with a stale one.
   await clearProfileCookies(profileId);
 
   await setProfileCookies(
@@ -186,28 +293,72 @@ async function importSnapshotUnsafe(
   }
 }
 
+/**
+ * Wipe one profile and bind the next WebView to it.
+ * Used before mounting the login WebView so Facebook
+ * writes cookies straight into the destination profile.
+ */
+export async function prepareIsolatedLogin(
+  profileId: string,
+): Promise<void> {
+  return serialized(async () => {
+    await clearProfileData(profileId);
+    await setNextWebViewProfile(profileId);
+  });
+}
+
+/**
+ * Persist the live profile jar into the encrypted
+ * vault (backup / cancel-restore / cold migration).
+ */
+export async function claimIsolatedLoginSession(
+  accountId: string,
+  profileId: string,
+): Promise<void> {
+  return serialized(async () => {
+    const cookies =
+      await extractCookiesFromProfile(profileId);
+
+    if (!hasAuthenticationCookies(cookies)) {
+      throw new SessionExpiredError(
+        'Login appeared to succeed, but authentication cookies could not be captured from the profile.',
+      );
+    }
+
+    const snapshot: CookieSnapshot = {
+      schemaVersion: 1,
+      accountId,
+      capturedAt: Date.now(),
+      cookies,
+    };
+
+    await saveSessionSnapshot(snapshot);
+    await setNextWebViewProfile(profileId);
+  });
+}
+
 export type IsolatedActivationResult =
   | 'already-resident'
   | 'migrated-from-snapshot';
 
 /**
- * Makes `profileId` the profile the next Messenger
- * WebView will bind to, migrating the account's saved
- * cookie snapshot into the profile the first time (so
- * existing accounts do not need to re-login).
- *
- * Throws SessionExpiredError when neither the profile
- * nor the vault holds a usable session; the caller
- * routes to reauthentication, exactly like legacy.
+ * Bind the next Messenger WebView to this account's
+ * profile. Migrates a vault snapshot only when the
+ * profile has no auth cookies yet (first open after
+ * upgrade). Prefer live profile cookies thereafter.
  */
 export async function activateIsolatedSession(
   accountId: string,
   profileId: string,
+  options?: {
+    forceRemigrate?: boolean;
+  },
 ): Promise<IsolatedActivationResult> {
   return serialized(async () => {
-    if (
-      await profileHasAuthCookies(profileId)
-    ) {
+    const hasLiveAuth =
+      await profileHasAuthCookies(profileId);
+
+    if (hasLiveAuth && !options?.forceRemigrate) {
       await setNextWebViewProfile(profileId);
       return 'already-resident';
     }
@@ -216,6 +367,13 @@ export async function activateIsolatedSession(
       await loadSessionSnapshot(accountId);
 
     if (!snapshot) {
+      if (hasLiveAuth) {
+        // Remigrate requested but no vault backup —
+        // keep the live profile session.
+        await setNextWebViewProfile(profileId);
+        return 'already-resident';
+      }
+
       throw new SessionExpiredError(
         'No usable saved session exists for this account.',
       );
@@ -232,38 +390,6 @@ export async function activateIsolatedSession(
   });
 }
 
-/**
- * Imports a just-captured login snapshot into the
- * account's profile and makes that profile pending for
- * the next WebView. Used right after claimLoginSession.
- */
-export async function adoptLoginSnapshotIntoProfile(
-  accountId: string,
-  profileId: string,
-): Promise<void> {
-  return serialized(async () => {
-    const snapshot =
-      await loadSessionSnapshot(accountId);
-
-    if (!snapshot) {
-      throw new SessionExpiredError(
-        'Login succeeded but no captured session snapshot was found.',
-      );
-    }
-
-    await importSnapshotUnsafe(
-      profileId,
-      snapshot,
-    );
-
-    await setNextWebViewProfile(profileId);
-  });
-}
-
-/**
- * Lightweight liveness check used by the periodic
- * persist path and the in-page expiry detector.
- */
 export async function isIsolatedSessionAuthenticated(
   profileId: string,
 ): Promise<boolean> {
@@ -273,17 +399,38 @@ export async function isIsolatedSessionAuthenticated(
 }
 
 /**
- * Best-effort account-profile removal: cookies are
- * cleared even when the profile object itself is still
- * referenced by a live WebView and cannot be deleted
- * yet (deleteProfile then reports false).
+ * Refresh the vault backup from the live profile jar
+ * so cancel-restore and cold migration stay current.
  */
+export async function persistIsolatedSession(
+  accountId: string,
+  profileId: string,
+): Promise<'saved' | 'unauthenticated'> {
+  return serialized(async () => {
+    const cookies =
+      await extractCookiesFromProfile(profileId);
+
+    if (!hasAuthenticationCookies(cookies)) {
+      return 'unauthenticated';
+    }
+
+    await saveSessionSnapshot({
+      schemaVersion: 1,
+      accountId,
+      capturedAt: Date.now(),
+      cookies,
+    });
+
+    return 'saved';
+  });
+}
+
 export async function deleteAccountProfile(
   profileId: string,
 ): Promise<void> {
   return serialized(async () => {
     try {
-      await clearProfileCookies(profileId);
+      await clearProfileData(profileId);
     } catch {
       // Deletion below may still succeed.
     }
@@ -291,8 +438,8 @@ export async function deleteAccountProfile(
     try {
       await deleteWebViewProfile(profileId);
     } catch {
-      // Locked by a live WebView; cookies are gone,
-      // and orphaned empty profiles are harmless.
+      // Locked by a live WebView; cookies/storage
+      // were cleared above when possible.
     }
   });
 }

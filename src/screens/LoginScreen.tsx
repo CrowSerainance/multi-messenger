@@ -28,8 +28,12 @@ import {
 } from '../services/cookieManager';
 
 import {
-  beginFreshLoginSession,
-} from '../services/sessionCoordinator';
+  resolveSessionMode,
+} from '../services/profileBackend';
+
+import {
+  isIsolatedSessionAuthenticated,
+} from '../services/profileCoordinator';
 
 import {
   type LoginCancellationDestination,
@@ -87,6 +91,12 @@ export function LoginScreen({
         state.replaceAccountFromLogin,
     );
 
+  const prepareLogin =
+    useAccountStore(
+      (state) =>
+        state.prepareLogin,
+    );
+
   const cancelLogin =
     useAccountStore(
       (state) =>
@@ -95,6 +105,9 @@ export function LoginScreen({
 
   const [ready, setReady] =
     useState(false);
+
+  const [loginProfileId, setLoginProfileId] =
+    useState<string | null>(null);
 
   const [
     showNameModal,
@@ -147,11 +160,14 @@ export function LoginScreen({
   useEffect(() => {
     let mounted = true;
 
-    beginFreshLoginSession()
-      .then(() => {
-        if (mounted) {
-          setReady(true);
+    prepareLogin(reauthAccountId)
+      .then((profileId) => {
+        if (!mounted) {
+          return;
         }
+
+        setLoginProfileId(profileId);
+        setReady(true);
       })
       .catch((caught) => {
         if (!mounted) {
@@ -168,7 +184,7 @@ export function LoginScreen({
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [prepareLogin, reauthAccountId]);
 
   const detectLogin =
     useCallback(async () => {
@@ -191,8 +207,18 @@ export function LoginScreen({
           authCheckPendingRef.current =
             false;
 
+          // Isolated login reads the destination
+          // profile jar (where Facebook wrote the
+          // cookies). Legacy still uses the shared
+          // default CookieManager.
           const authenticated =
-            await isCurrentJarAuthenticated();
+            loginProfileId &&
+            (await resolveSessionMode()) ===
+              'isolated'
+              ? await isIsolatedSessionAuthenticated(
+                  loginProfileId,
+                )
+              : await isCurrentJarAuthenticated();
 
           if (cancellingRef.current) {
             return;
@@ -212,6 +238,8 @@ export function LoginScreen({
 
               await replaceAccountFromLogin(
                 reauthAccountId,
+                loginProfileId ??
+                  undefined,
               );
 
               claimStorageForAccount(
@@ -253,6 +281,7 @@ export function LoginScreen({
           false;
       }
     }, [
+      loginProfileId,
       onComplete,
       reauthAccountId,
       replaceAccountFromLogin,
@@ -267,6 +296,7 @@ export function LoginScreen({
         const accountId =
           await createAccountFromLogin(
             name,
+            loginProfileId ?? undefined,
           );
 
         claimStorageForAccount(

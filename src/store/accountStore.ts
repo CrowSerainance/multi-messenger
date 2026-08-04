@@ -8,6 +8,7 @@ import type {
 
 import {
   abandonLoginSession,
+  beginFreshLoginSession,
   claimLoginSession,
   forceClearGlobalSession,
   persistOwnedSession,
@@ -30,13 +31,15 @@ import {
 
 import {
   resolveSessionMode,
+  resetNextWebViewProfile,
 } from '../services/profileBackend';
 
 import {
   activateIsolatedSession,
-  adoptLoginSnapshotIntoProfile,
+  claimIsolatedLoginSession,
   deleteAccountProfile,
-  isIsolatedSessionAuthenticated,
+  persistIsolatedSession,
+  prepareIsolatedLogin,
 } from '../services/profileCoordinator';
 
 const ACCOUNT_INDEX_KEY =
@@ -64,15 +67,32 @@ interface AccountStore {
   isSwitching: boolean;
   webViewEpoch: number;
   error: string | null;
+  /**
+   * Profile the in-flight login WebView is bound to.
+   * Cleared on successful claim or cancel.
+   */
+  pendingLoginProfileId: string | null;
 
   hydrate(): Promise<void>;
 
+  /**
+   * Isolated mode: allocate/clear the destination
+   * profile and bind the next WebView to it before
+   * LoginScreen mounts. Returns the profile id.
+   * Legacy mode: runs beginFreshLoginSession.
+   */
+  prepareLogin(
+    reauthAccountId?: string,
+  ): Promise<string | null>;
+
   createAccountFromLogin(
     name: string,
+    profileId?: string,
   ): Promise<string>;
 
   replaceAccountFromLogin(
     accountId: string,
+    profileId?: string,
   ): Promise<void>;
 
   cancelLogin():
@@ -114,48 +134,6 @@ function newProfileId(): string {
   return `acct-${Crypto.randomUUID()}`;
 }
 
-/**
- * Puts a just-claimed login session into the account's
- * isolated profile (isolated mode only). On any failure
- * the shared jar still holds the live session and the
- * pending-profile holder was never changed, so the
- * Messenger WebView simply mounts against the default
- * profile like legacy — never a broken state.
- */
-async function adoptLoginIntoIsolatedProfile(
-  accountId: string,
-  existingProfileId?: string,
-): Promise<string | undefined> {
-  if (
-    (await resolveSessionMode()) !== 'isolated'
-  ) {
-    return existingProfileId;
-  }
-
-  const profileId =
-    existingProfileId ?? newProfileId();
-
-  try {
-    await adoptLoginSnapshotIntoProfile(
-      accountId,
-      profileId,
-    );
-  } catch {
-    return existingProfileId;
-  }
-
-  // The profile owns the session now; scrub the copy
-  // left in the shared jar.
-  try {
-    await releaseOwnedSession(accountId);
-  } catch {
-    // Residue in the shared jar is cleared by the
-    // next login flow anyway.
-  }
-
-  return profileId;
-}
-
 async function saveIndex(
   accounts: Account[],
   activeAccountId: string | null,
@@ -182,6 +160,7 @@ export const useAccountStore =
     isSwitching: false,
     webViewEpoch: 0,
     error: null,
+    pendingLoginProfileId: null,
 
     async hydrate() {
       try {
@@ -238,7 +217,41 @@ export const useAccountStore =
       }
     },
 
-    async createAccountFromLogin(name) {
+    async prepareLogin(reauthAccountId) {
+      if (
+        (await resolveSessionMode()) !==
+        'isolated'
+      ) {
+        await beginFreshLoginSession();
+        set({ pendingLoginProfileId: null });
+        return null;
+      }
+
+      const existingProfileId =
+        reauthAccountId
+          ? get().accounts.find(
+              (account) =>
+                account.id ===
+                reauthAccountId,
+            )?.profileId
+          : undefined;
+
+      const profileId =
+        existingProfileId ?? newProfileId();
+
+      await prepareIsolatedLogin(profileId);
+
+      set({
+        pendingLoginProfileId: profileId,
+      });
+
+      return profileId;
+    },
+
+    async createAccountFromLogin(
+      name,
+      profileId,
+    ) {
       const cleanName = name.trim();
 
       if (!cleanName) {
@@ -250,12 +263,29 @@ export const useAccountStore =
       const accountId =
         Crypto.randomUUID();
 
-      await claimLoginSession(accountId);
+      const mode =
+        await resolveSessionMode();
 
-      const profileId =
-        await adoptLoginIntoIsolatedProfile(
+      let resolvedProfileId =
+        profileId ??
+        get().pendingLoginProfileId ??
+        undefined;
+
+      if (mode === 'isolated') {
+        if (!resolvedProfileId) {
+          throw new Error(
+            'Login profile was not prepared.',
+          );
+        }
+
+        await claimIsolatedLoginSession(
           accountId,
+          resolvedProfileId,
         );
+      } else {
+        await claimLoginSession(accountId);
+        resolvedProfileId = undefined;
+      }
 
       const now = Date.now();
 
@@ -266,8 +296,11 @@ export const useAccountStore =
         updatedAt: now,
         status: 'ready',
         lastRefreshAt: now,
-        ...(profileId
-          ? { profileId }
+        ...(resolvedProfileId
+          ? {
+              profileId: resolvedProfileId,
+              profileCookiesV2: true,
+            }
           : {}),
       };
 
@@ -293,6 +326,7 @@ export const useAccountStore =
       set((state) => ({
         accounts: nextAccounts,
         activeAccountId: accountId,
+        pendingLoginProfileId: null,
         webViewEpoch:
           state.webViewEpoch + 1,
         error: null,
@@ -303,17 +337,33 @@ export const useAccountStore =
 
     async replaceAccountFromLogin(
       accountId,
+      profileId,
     ) {
-      await claimLoginSession(accountId);
+      const mode =
+        await resolveSessionMode();
 
-      const profileId =
-        await adoptLoginIntoIsolatedProfile(
+      let resolvedProfileId =
+        profileId ??
+        get().pendingLoginProfileId ??
+        get().accounts.find(
+          (account) =>
+            account.id === accountId,
+        )?.profileId;
+
+      if (mode === 'isolated') {
+        if (!resolvedProfileId) {
+          resolvedProfileId =
+            newProfileId();
+        }
+
+        await claimIsolatedLoginSession(
           accountId,
-          get().accounts.find(
-            (account) =>
-              account.id === accountId,
-          )?.profileId,
+          resolvedProfileId,
         );
+      } else {
+        await claimLoginSession(accountId);
+        resolvedProfileId = undefined;
+      }
 
       const now = Date.now();
 
@@ -325,8 +375,12 @@ export const useAccountStore =
                 status: 'ready' as const,
                 updatedAt: now,
                 lastRefreshAt: now,
-                ...(profileId
-                  ? { profileId }
+                ...(resolvedProfileId
+                  ? {
+                      profileId:
+                        resolvedProfileId,
+                      profileCookiesV2: true,
+                    }
                   : {}),
               }
             : account,
@@ -341,6 +395,7 @@ export const useAccountStore =
       set((state) => ({
         accounts: nextAccounts,
         activeAccountId: accountId,
+        pendingLoginProfileId: null,
         webViewEpoch:
           state.webViewEpoch + 1,
         error: null,
@@ -348,16 +403,55 @@ export const useAccountStore =
     },
 
     async cancelLogin() {
-      const accountId =
+      const pendingProfileId =
+        get().pendingLoginProfileId;
+
+      const previousAccountId =
         get().activeAccountId;
 
-      if (!accountId) {
+      if (
+        pendingProfileId &&
+        (await resolveSessionMode()) ===
+          'isolated'
+      ) {
+        const ownedAccount =
+          get().accounts.find(
+            (account) =>
+              account.profileId ===
+              pendingProfileId,
+          );
+
+        if (!ownedAccount) {
+          // Brand-new login cancelled: drop the
+          // temporary profile so it cannot linger.
+          await deleteAccountProfile(
+            pendingProfileId,
+          );
+        } else {
+          // Reauth cancelled after the profile was
+          // wiped for login: restore vault cookies.
+          try {
+            await activateIsolatedSession(
+              ownedAccount.id,
+              pendingProfileId,
+            );
+          } catch {
+            // Leave the account marked for reauth
+            // by the switch path below if needed.
+          }
+        }
+      }
+
+      set({ pendingLoginProfileId: null });
+
+      if (!previousAccountId) {
         await abandonLoginSession();
+        await resetNextWebViewProfile();
         return 'home';
       }
 
       await get().switchAccount(
-        accountId,
+        previousAccountId,
       );
 
       return 'messenger';
@@ -401,6 +495,12 @@ export const useAccountStore =
           await activateIsolatedSession(
             accountId,
             switchedProfileId,
+            {
+              // One-time rewrite of host-only cookie
+              // copies from the first ML-1 migration.
+              forceRemigrate:
+                !target.profileCookiesV2,
+            },
           );
         } else {
           await switchGlobalSession(
@@ -419,6 +519,7 @@ export const useAccountStore =
                     ? {
                         profileId:
                           switchedProfileId,
+                        profileCookiesV2: true,
                       }
                     : {}),
                 }
@@ -492,15 +593,10 @@ export const useAccountStore =
         (await resolveSessionMode()) ===
           'isolated'
       ) {
-        // The profile itself is the durable store in
-        // isolated mode; nothing to snapshot. Just
-        // verify the session is still authenticated.
-        result =
-          (await isIsolatedSessionAuthenticated(
-            activeProfileId,
-          ))
-            ? 'saved'
-            : 'unauthenticated';
+        result = await persistIsolatedSession(
+          accountId,
+          activeProfileId,
+        );
       } else {
         result = await persistOwnedSession(
           accountId,

@@ -19,6 +19,12 @@ export interface Account {
    * Absent for accounts that only ever ran legacy.
    */
   profileId?: string;
+  /**
+   * Set after cookies were written with inferred
+   * Domain attributes (fixes the host-only copy
+   * from the first ML-1 migration).
+   */
+  profileCookiesV2?: boolean;
 }
 
 export interface StoredCookie extends Cookie {
