@@ -36,11 +36,16 @@ import {
 } from '../ui/AppTextField';
 
 import {
-  colors,
   space,
+  useThemeColors,
+  useThemedStyles,
+  type ThemeColors,
 } from '../ui/theme';
 
 export function UnlockScreen() {
+  const colors = useThemeColors();
+  const styles = useThemedStyles(makeStyles);
+
   const insets = useSafeAreaInsets();
 
   const config =
@@ -286,7 +291,10 @@ export function UnlockScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (
+  colors: ThemeColors,
+) =>
+  StyleSheet.create({
   container: {
     flex: 1,
     paddingHorizontal: space.xl,

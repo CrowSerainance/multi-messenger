@@ -34,9 +34,11 @@ import {
 } from '../ui/EmptyState';
 
 import {
-  colors,
   radius,
   space,
+  useThemeColors,
+  useThemedStyles,
+  type ThemeColors,
 } from '../ui/theme';
 
 interface Props {
@@ -56,6 +58,9 @@ export function HomeScreen({
   onOpenSecurity,
   onOpenPrivacy,
 }: Props) {
+  const colors = useThemeColors();
+  const styles = useThemedStyles(makeStyles);
+
   const insets = useSafeAreaInsets();
 
   const accounts =
@@ -230,7 +235,9 @@ export function HomeScreen({
   );
 }
 
-const styles =
+const makeStyles = (
+  colors: ThemeColors,
+) =>
   StyleSheet.create({
     container: {
       flex: 1,
@@ -276,7 +283,7 @@ const styles =
 
     accountPressed: {
       backgroundColor: colors.primarySoft,
-      borderColor: '#BFDBFE',
+      borderColor: colors.primaryBorder,
     },
 
     accountBody: {

@@ -32,9 +32,11 @@ import {
 } from '../ui/ScreenHeader';
 
 import {
-  colors,
   radius,
   space,
+  useThemeColors,
+  useThemedStyles,
+  type ThemeColors,
 } from '../ui/theme';
 
 interface Props {
@@ -48,6 +50,9 @@ function readNewestFirst(): SessionDiagnosticEntry[] {
 export function SessionDiagnosticsScreen({
   onBack,
 }: Props) {
+  const colors = useThemeColors();
+  const styles = useThemedStyles(makeStyles);
+
   const insets = useSafeAreaInsets();
 
   const [entries, setEntries] =
@@ -146,7 +151,10 @@ export function SessionDiagnosticsScreen({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (
+  colors: ThemeColors,
+) =>
+  StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,

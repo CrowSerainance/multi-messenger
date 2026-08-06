@@ -44,9 +44,11 @@ import {
 } from '../ui/ScreenHeader';
 
 import {
-  colors,
   radius,
   space,
+  useThemeColors,
+  useThemedStyles,
+  type ThemeColors,
 } from '../ui/theme';
 
 interface Props {
@@ -87,6 +89,9 @@ export function ManageAccountsScreen({
   onOpenSecurity,
   onOpenPrivacy,
 }: Props) {
+  const colors = useThemeColors();
+  const styles = useThemedStyles(makeStyles);
+
   const insets = useSafeAreaInsets();
 
   const accounts =
@@ -485,7 +490,9 @@ export function ManageAccountsScreen({
   );
 }
 
-const styles =
+const makeStyles = (
+  colors: ThemeColors,
+) =>
   StyleSheet.create({
     container: {
       flex: 1,

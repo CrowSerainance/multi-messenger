@@ -40,9 +40,11 @@ import {
 } from '../ui/ScreenHeader';
 
 import {
-  colors,
   radius,
   space,
+  useThemeColors,
+  useThemedStyles,
+  type ThemeColors,
 } from '../ui/theme';
 
 interface Props {
@@ -54,6 +56,9 @@ export function SecuritySettingsScreen({
   onBack,
   onOpenPrivacy,
 }: Props) {
+  const colors = useThemeColors();
+  const styles = useThemedStyles(makeStyles);
+
   const insets = useSafeAreaInsets();
 
   const config =
@@ -274,13 +279,13 @@ export function SecuritySettingsScreen({
             }
             trackColor={{
               false: colors.borderStrong,
-              true: '#93C5FD',
+              true: colors.primaryBorder,
             }}
             thumbColor={
               config?.biometricEnabled &&
               biometric.usable
                 ? colors.primary
-                : '#F8FAFC'
+                : colors.surface
             }
           />
         </View>
@@ -306,7 +311,10 @@ export function SecuritySettingsScreen({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (
+  colors: ThemeColors,
+) =>
+  StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,

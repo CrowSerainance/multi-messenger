@@ -352,14 +352,27 @@ export async function activateIsolatedSession(
   profileId: string,
   options?: {
     forceRemigrate?: boolean;
+    /**
+     * Multi-live passes false: the container owns the
+     * process-global pending-profile slot and sets it
+     * itself, under the admission lock, immediately
+     * before the WebView mounts.
+     */
+    bindNextWebView?: boolean;
   },
 ): Promise<IsolatedActivationResult> {
+  const bindNextWebView =
+    options?.bindNextWebView !== false;
+
   return serialized(async () => {
     const hasLiveAuth =
       await profileHasAuthCookies(profileId);
 
     if (hasLiveAuth && !options?.forceRemigrate) {
-      await setNextWebViewProfile(profileId);
+      if (bindNextWebView) {
+        await setNextWebViewProfile(profileId);
+      }
+
       return 'already-resident';
     }
 
@@ -370,7 +383,10 @@ export async function activateIsolatedSession(
       if (hasLiveAuth) {
         // Remigrate requested but no vault backup —
         // keep the live profile session.
-        await setNextWebViewProfile(profileId);
+        if (bindNextWebView) {
+          await setNextWebViewProfile(profileId);
+        }
+
         return 'already-resident';
       }
 
@@ -384,7 +400,9 @@ export async function activateIsolatedSession(
       snapshot,
     );
 
-    await setNextWebViewProfile(profileId);
+    if (bindNextWebView) {
+      await setNextWebViewProfile(profileId);
+    }
 
     return 'migrated-from-snapshot';
   });

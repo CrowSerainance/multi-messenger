@@ -23,7 +23,10 @@ import {
 } from './src/components/SensitiveScreen';
 
 import {
-  colors,
+  useThemeColors,
+  useThemeName,
+  useThemedStyles,
+  type ThemeColors,
 } from './src/ui/theme';
 
 import {
@@ -76,8 +79,13 @@ import {
 
 import {
   getWebViewProfileCapabilityForDiagnostics,
+  resolveSessionMode,
   runWebViewProfileSelfTest,
 } from './src/services/profileBackend';
+
+import {
+  isMultiLiveEnabled,
+} from './src/constants/features';
 
 type Route =
   | {
@@ -110,12 +118,28 @@ type Route =
     };
 
 export default function App() {
+  const colors = useThemeColors();
+  const styles = useThemedStyles(makeStyles);
+
+  // System appearance drives the chrome: a light status bar over
+  // the dark palette is unreadable.
+  const barStyle =
+    useThemeName() === 'dark'
+      ? ('light-content' as const)
+      : ('dark-content' as const);
+
   const [route, setRoute] =
     useState<Route>({
       name: 'home',
     });
 
   const [resuming, setResuming] =
+    useState(false);
+
+  // Multi-live needs the flag *and* a device whose WebView
+  // provider supports isolated profiles. Anything else keeps the
+  // single-WebView path.
+  const [multiLive, setMultiLive] =
     useState(false);
 
   const didResumeRef = useRef(false);
@@ -172,6 +196,24 @@ export default function App() {
   useEffect(() => {
     void bootstrapLock();
   }, [bootstrapLock]);
+
+  useEffect(() => {
+    if (!isMultiLiveEnabled()) {
+      return;
+    }
+
+    let mounted = true;
+
+    void resolveSessionMode().then((mode) => {
+      if (mounted && mode === 'isolated') {
+        setMultiLive(true);
+      }
+    });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   // ML-0 capability spike: development-only. Records the
   // real AndroidX WebKit MULTI_PROFILE result and runs the
@@ -402,7 +444,7 @@ export default function App() {
   if (!lockConfig) {
     return (
       <SafeAreaProvider>
-        <StatusBar barStyle="dark-content" />
+        <StatusBar barStyle={barStyle} />
         <SetupPinScreen />
       </SafeAreaProvider>
     );
@@ -451,7 +493,30 @@ export default function App() {
       }
     };
 
-  let content: React.ReactNode;
+  const messengerCallbacks = {
+    onAddAccount: () => {
+      setRoute({ name: 'login' });
+    },
+
+    onReauthenticate: (
+      accountId: string,
+    ) => {
+      setRoute({
+        name: 'login',
+        reauthAccountId: accountId,
+      });
+    },
+
+    onBackToAccounts: () => {
+      setRoute({ name: 'home' });
+    },
+
+    onOpenDiagnostics: () => {
+      setRoute({ name: 'diagnostics' });
+    },
+  };
+
+  let content: React.ReactNode = null;
 
   switch (route.name) {
     case 'home':
@@ -604,35 +669,13 @@ export default function App() {
       break;
 
     case 'messenger':
-      content = (
+      // In multi-live mode the Messenger surface is rendered
+      // once, outside the router, so leaving this route cannot
+      // unmount the warm WebViews.
+      content = multiLive ? null : (
         <MessengerScreen
-          onAddAccount={() => {
-            setRoute({
-              name: 'login',
-            });
-          }}
-
-          onReauthenticate={(
-            accountId,
-          ) => {
-            setRoute({
-              name: 'login',
-              reauthAccountId:
-                accountId,
-            });
-          }}
-
-          onBackToAccounts={() => {
-            setRoute({
-              name: 'home',
-            });
-          }}
-
-          onOpenDiagnostics={() => {
-            setRoute({
-              name: 'diagnostics',
-            });
-          }}
+          multiLive={false}
+          {...messengerCallbacks}
         />
       );
       break;
@@ -653,7 +696,7 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <StatusBar
-        barStyle="dark-content"
+        barStyle={barStyle}
       />
 
       {showBootLoading && (
@@ -673,7 +716,40 @@ export default function App() {
           }
         >
           <SensitiveScreen>
-            {content}
+            {/*
+              Multi-live: the Messenger surface lives above the
+              router and is only hidden, never unmounted. Route
+              changes (Home, Manage, Security, Login) used to
+              destroy the WebView and force a full reload with an
+              empty inbox on the way back.
+            */}
+            {multiLive && (
+              <View
+                style={[
+                  styles.persistentMessenger,
+                  route.name === 'messenger'
+                    ? styles.messengerVisible
+                    : styles.messengerHidden,
+                ]}
+                pointerEvents={
+                  route.name === 'messenger'
+                    ? 'auto'
+                    : 'none'
+                }
+                collapsable={false}
+              >
+                <MessengerScreen
+                  multiLive
+                  {...messengerCallbacks}
+                />
+              </View>
+            )}
+
+            {content !== null && (
+              <View style={styles.routeLayer}>
+                {content}
+              </View>
+            )}
           </SensitiveScreen>
         </View>
       )}
@@ -693,7 +769,9 @@ export default function App() {
   );
 }
 
-const styles =
+const makeStyles = (
+  colors: ThemeColors,
+) =>
   StyleSheet.create({
     loading: {
       flex: 1,
@@ -704,6 +782,25 @@ const styles =
 
     sessionSurface: {
       flex: 1,
+    },
+
+    persistentMessenger: {
+      ...StyleSheet.absoluteFill,
+    },
+
+    messengerVisible: {
+      opacity: 1,
+      zIndex: 1,
+    },
+
+    messengerHidden: {
+      opacity: 0,
+      zIndex: 0,
+    },
+
+    routeLayer: {
+      flex: 1,
+      zIndex: 2,
     },
 
     lockFullscreen: {

@@ -51,22 +51,59 @@ import {
   STORAGE_WIPED_MESSAGE,
 } from '../services/webStorageIsolation';
 
+import {
+  useThemedStyles,
+  type ThemeColors,
+} from '../ui/theme';
+
 interface Props {
   accountId: string;
   epoch: number;
+  /**
+   * False for warm-but-hidden sessions in multi-live mode. An
+   * inactive WebView must not consume back presses, persist the
+   * session (the store persists the *active* account), report
+   * expiry into the router, or keep media playing.
+   */
+  isActive?: boolean;
   onExpired(): void;
+  /** Fires once the native WebView instance exists. */
+  onNativeCreated?(): void;
+  /** Fires on the first completed load of this session. */
+  onReady?(): void;
 }
 
 const LOAD_SAVE_THROTTLE_MS =
   30_000;
 
+// Hidden sessions keep their sockets and DOM, but audio or video
+// must not keep playing behind another account's chat.
+const PAUSE_MEDIA_SCRIPT = `
+(function () {
+  try {
+    var media = document.querySelectorAll('video, audio');
+    for (var index = 0; index < media.length; index += 1) {
+      try {
+        media[index].pause();
+      } catch (error) {}
+    }
+  } catch (error) {}
+  true;
+})();
+`;
+
 export function MessengerWebView({
   accountId,
   epoch,
+  isActive = true,
   onExpired,
+  onNativeCreated,
+  onReady,
 }: Props) {
+  const styles = useThemedStyles(makeStyles);
+
   const webViewRef =
-    useRef<WebView>(null);
+    useRef<WebView | null>(null);
 
   const canGoBackRef =
     useRef(false);
@@ -76,6 +113,15 @@ export function MessengerWebView({
 
   const lastSaveAt =
     useRef(0);
+
+  const nativeCreatedRef =
+    useRef(false);
+
+  const readyReportedRef =
+    useRef(false);
+
+  const isActiveRef =
+    useRef(isActive);
 
   const persistActiveSession =
     useAccountStore(
@@ -92,6 +138,18 @@ export function MessengerWebView({
         )?.profileId,
     );
 
+  // Effects read activity through a ref so listeners registered
+  // once still see the current visibility.
+  useEffect(() => {
+    isActiveRef.current = isActive;
+
+    if (!isActive) {
+      webViewRef.current?.injectJavaScript(
+        PAUSE_MEDIA_SCRIPT,
+      );
+    }
+  }, [isActive]);
+
   // The store persist path also records the
   // account's last successful refresh time.
   // Ownership is still verified by the session
@@ -99,6 +157,11 @@ export function MessengerWebView({
   // save into the wrong account.
   const persist =
     useCallback(async () => {
+      if (!isActiveRef.current) {
+        // Only the visible session owns the persist path.
+        return;
+      }
+
       try {
         await persistActiveSession();
       } catch {
@@ -137,6 +200,12 @@ export function MessengerWebView({
       BackHandler.addEventListener(
         'hardwareBackPress',
         () => {
+          // Hidden sessions must not swallow the
+          // back press of the visible one.
+          if (!isActiveRef.current) {
+            return false;
+          }
+
           if (canGoBackRef.current) {
             webViewRef.current?.goBack();
             return true;
@@ -266,15 +335,41 @@ export function MessengerWebView({
           expiredReported.current =
             true;
 
-          onExpired();
+          // Routing a hidden session to the login screen
+          // would hijack the account the user is reading.
+          // The next switch re-runs this check.
+          if (isActiveRef.current) {
+            onExpired();
+          } else {
+            expiredReported.current = false;
+          }
         }
       },
       [onExpired, profileId],
     );
 
+  const attachRef =
+    useCallback(
+      (instance: WebView | null) => {
+        webViewRef.current = instance;
+
+        // The native instance exists by the time React
+        // attaches the ref, so the profile slot taken for
+        // this mount can be handed to the next one.
+        if (
+          instance &&
+          !nativeCreatedRef.current
+        ) {
+          nativeCreatedRef.current = true;
+          onNativeCreated?.();
+        }
+      },
+      [onNativeCreated],
+    );
+
   return (
     <WebView
-      ref={webViewRef}
+      ref={attachRef}
       key={`${accountId}:${epoch}`}
       style={styles.webview}
       source={{
@@ -368,6 +463,12 @@ export function MessengerWebView({
         // fb:// or intent:// are dropped so
         // they cannot crash the WebView.
         if (isHttpUrl(url)) {
+          // A hidden session must never pull the user
+          // out of the app on its own.
+          if (!isActiveRef.current) {
+            return false;
+          }
+
           if (__DEV__) {
             // Host only: full URLs carry tokens.
             console.log(
@@ -391,6 +492,11 @@ export function MessengerWebView({
         const url =
           event.nativeEvent.url;
 
+        if (!readyReportedRef.current) {
+          readyReportedRef.current = true;
+          onReady?.();
+        }
+
         persistAfterLoad();
 
         void detectExpiredSession(
@@ -403,7 +509,10 @@ export function MessengerWebView({
         canGoBackRef.current =
           navState.canGoBack;
 
-        if (isCallUrl(navState.url)) {
+        if (
+          isActiveRef.current &&
+          isCallUrl(navState.url)
+        ) {
           void ensureMediaPermissions();
         }
 
@@ -415,16 +524,19 @@ export function MessengerWebView({
   );
 }
 
-const styles =
+const makeStyles = (
+  colors: ThemeColors,
+) =>
   StyleSheet.create({
     webview: {
       flex: 1,
+      backgroundColor: colors.background,
     },
 
     loading: {
       ...StyleSheet.absoluteFill,
       justifyContent: 'center',
       alignItems: 'center',
-      backgroundColor: 'white',
+      backgroundColor: colors.background,
     },
   });

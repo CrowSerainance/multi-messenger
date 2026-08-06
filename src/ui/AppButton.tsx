@@ -10,9 +10,11 @@ import {
 } from 'react-native';
 
 import {
-  colors,
   radius,
   space,
+  useThemeColors,
+  useThemedStyles,
+  type ThemeColors,
 } from './theme';
 
 type Variant =
@@ -45,6 +47,9 @@ export function AppButton({
 }: Props) {
   const isDisabled = disabled || busy;
 
+  const colors = useThemeColors();
+  const styles = useThemedStyles(makeStyles);
+
   return (
     <Pressable
       accessibilityRole="button"
@@ -55,13 +60,15 @@ export function AppButton({
       disabled={isDisabled}
       onPress={onPress}
       style={({ pressed }) => [
-        styles.base,
-        sizeStyles[size],
-        variantStyles[variant],
+        styles.base.base,
+        styles.size[size],
+        styles.variant[variant],
         pressed && !isDisabled
-          ? pressedStyles[variant]
+          ? styles.pressed[variant]
           : null,
-        isDisabled ? styles.disabled : null,
+        isDisabled
+          ? styles.base.disabled
+          : null,
         style,
       ]}
     >
@@ -77,11 +84,11 @@ export function AppButton({
       ) : (
         <Text
           style={[
-            styles.label,
+            styles.base.label,
             size === 'sm'
-              ? styles.labelSm
+              ? styles.base.labelSm
               : null,
-            labelStyles[variant],
+            styles.label[variant],
           ]}
         >
           {title}
@@ -91,96 +98,100 @@ export function AppButton({
   );
 }
 
-const styles = StyleSheet.create({
-  base: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: 'transparent',
-    minHeight: 48,
-    paddingHorizontal: space.lg,
-  },
+const makeStyles = (
+  colors: ThemeColors,
+) => ({
+  base: StyleSheet.create({
+    base: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderRadius: radius.md,
+      borderWidth: 1,
+      borderColor: 'transparent',
+      minHeight: 48,
+      paddingHorizontal: space.lg,
+    },
 
-  label: {
-    fontSize: 16,
-    fontWeight: '700',
-  },
+    label: {
+      fontSize: 16,
+      fontWeight: '700',
+    },
 
-  labelSm: {
-    fontSize: 14,
-  },
+    labelSm: {
+      fontSize: 14,
+    },
 
-  disabled: {
-    opacity: 0.45,
-  },
-});
+    disabled: {
+      opacity: 0.45,
+    },
+  }),
 
-const sizeStyles = StyleSheet.create({
-  sm: {
-    minHeight: 40,
-    paddingHorizontal: space.md,
-  },
-  md: {
-    minHeight: 48,
-  },
-  lg: {
-    minHeight: 54,
-  },
-});
+  size: StyleSheet.create({
+    sm: {
+      minHeight: 40,
+      paddingHorizontal: space.md,
+    },
+    md: {
+      minHeight: 48,
+    },
+    lg: {
+      minHeight: 54,
+    },
+  }),
 
-const variantStyles = StyleSheet.create({
-  primary: {
-    backgroundColor: colors.primary,
-  },
-  secondary: {
-    backgroundColor: colors.surface,
-    borderColor: colors.borderStrong,
-  },
-  ghost: {
-    backgroundColor: 'transparent',
-  },
-  danger: {
-    backgroundColor: colors.danger,
-  },
-  dangerGhost: {
-    backgroundColor: colors.dangerSoft,
-    borderColor: '#FECACA',
-  },
-});
+  variant: StyleSheet.create({
+    primary: {
+      backgroundColor: colors.primary,
+    },
+    secondary: {
+      backgroundColor: colors.surface,
+      borderColor: colors.borderStrong,
+    },
+    ghost: {
+      backgroundColor: 'transparent',
+    },
+    danger: {
+      backgroundColor: colors.danger,
+    },
+    dangerGhost: {
+      backgroundColor: colors.dangerSoft,
+      borderColor: colors.danger,
+    },
+  }),
 
-const pressedStyles = StyleSheet.create({
-  primary: {
-    backgroundColor: colors.primaryPressed,
-  },
-  secondary: {
-    backgroundColor: colors.primarySoft,
-  },
-  ghost: {
-    backgroundColor: colors.primarySoft,
-  },
-  danger: {
-    opacity: 0.9,
-  },
-  dangerGhost: {
-    opacity: 0.85,
-  },
-});
+  pressed: StyleSheet.create({
+    primary: {
+      backgroundColor: colors.primaryPressed,
+    },
+    secondary: {
+      backgroundColor: colors.primarySoft,
+    },
+    ghost: {
+      backgroundColor: colors.primarySoft,
+    },
+    danger: {
+      opacity: 0.9,
+    },
+    dangerGhost: {
+      opacity: 0.85,
+    },
+  }),
 
-const labelStyles = StyleSheet.create({
-  primary: {
-    color: colors.surface,
-  },
-  secondary: {
-    color: colors.text,
-  },
-  ghost: {
-    color: colors.primary,
-  },
-  danger: {
-    color: colors.surface,
-  },
-  dangerGhost: {
-    color: colors.danger,
-  },
+  label: StyleSheet.create({
+    primary: {
+      color: colors.surface,
+    },
+    secondary: {
+      color: colors.text,
+    },
+    ghost: {
+      color: colors.primary,
+    },
+    danger: {
+      color: colors.surface,
+    },
+    dangerGhost: {
+      color: colors.danger,
+    },
+  }),
 });

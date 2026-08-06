@@ -11,8 +11,9 @@ import {
 } from './AppButton';
 
 import {
-  colors,
   space,
+  useThemedStyles,
+  type ThemeColors,
 } from './theme';
 
 interface Props {
@@ -28,6 +29,8 @@ export function EmptyState({
   actionLabel,
   onAction,
 }: Props) {
+  const styles = useThemedStyles(makeStyles);
+
   return (
     <View style={styles.wrap}>
       <Text style={styles.title}>
@@ -49,30 +52,33 @@ export function EmptyState({
   );
 }
 
-const styles = StyleSheet.create({
-  wrap: {
-    alignItems: 'center',
-    paddingHorizontal: space.xl,
-    paddingVertical: 48,
-    gap: space.md,
-  },
+const makeStyles = (
+  colors: ThemeColors,
+) =>
+  StyleSheet.create({
+    wrap: {
+      alignItems: 'center',
+      paddingHorizontal: space.xl,
+      paddingVertical: 48,
+      gap: space.md,
+    },
 
-  title: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: colors.text,
-    textAlign: 'center',
-  },
+    title: {
+      fontSize: 18,
+      fontWeight: '800',
+      color: colors.text,
+      textAlign: 'center',
+    },
 
-  body: {
-    fontSize: 15,
-    lineHeight: 22,
-    color: colors.textMuted,
-    textAlign: 'center',
-  },
+    body: {
+      fontSize: 15,
+      lineHeight: 22,
+      color: colors.textMuted,
+      textAlign: 'center',
+    },
 
-  action: {
-    marginTop: space.sm,
-    alignSelf: 'stretch',
-  },
-});
+    action: {
+      marginTop: space.sm,
+      alignSelf: 'stretch',
+    },
+  });

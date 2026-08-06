@@ -19,8 +19,10 @@ import {
 } from '../ui/ScreenHeader';
 
 import {
-  colors,
   space,
+  useThemeColors,
+  useThemedStyles,
+  type ThemeColors,
 } from '../ui/theme';
 
 interface Props {
@@ -30,6 +32,9 @@ interface Props {
 export function PrivacyPolicyScreen({
   onBack,
 }: Props) {
+  const colors = useThemeColors();
+  const styles = useThemedStyles(makeStyles);
+
   const insets = useSafeAreaInsets();
 
   return (
@@ -101,7 +106,10 @@ export function PrivacyPolicyScreen({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (
+  colors: ThemeColors,
+) =>
+  StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
