@@ -36,9 +36,11 @@ import {
 } from '../ui/AppTextField';
 
 import {
-  colors,
   radius,
   space,
+  useThemeColors,
+  useThemedStyles,
+  type ThemeColors,
 } from '../ui/theme';
 
 interface Props {
@@ -48,6 +50,9 @@ interface Props {
 export function ForgotPinScreen({
   onCancel,
 }: Props) {
+  const colors = useThemeColors();
+  const styles = useThemedStyles(makeStyles);
+
   const insets = useSafeAreaInsets();
 
   const config =
@@ -308,7 +313,10 @@ export function ForgotPinScreen({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (
+  colors: ThemeColors,
+) =>
+  StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
@@ -368,7 +376,7 @@ const styles = StyleSheet.create({
     padding: space.lg,
     borderRadius: radius.lg,
     borderWidth: 1,
-    borderColor: '#FECACA',
+    borderColor: colors.danger,
     backgroundColor: colors.dangerSoft,
     gap: space.md,
   },

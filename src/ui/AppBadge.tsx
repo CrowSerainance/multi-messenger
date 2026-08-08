@@ -7,9 +7,10 @@ import {
 } from 'react-native';
 
 import {
-  colors,
   radius,
   space,
+  useThemedStyles,
+  type ThemeColors,
 } from './theme';
 
 type Tone =
@@ -28,17 +29,19 @@ export function AppBadge({
   label,
   tone = 'neutral',
 }: Props) {
+  const styles = useThemedStyles(makeStyles);
+
   return (
     <View
       style={[
-        styles.badge,
-        toneStyles[tone],
+        styles.base.badge,
+        styles.tone[tone],
       ]}
     >
       <Text
         style={[
-          styles.label,
-          labelToneStyles[tone],
+          styles.base.label,
+          styles.labelTone[tone],
         ]}
       >
         {label}
@@ -47,51 +50,55 @@ export function AppBadge({
   );
 }
 
-const styles = StyleSheet.create({
-  badge: {
-    paddingHorizontal: space.sm,
-    paddingVertical: 3,
-    borderRadius: radius.pill,
-  },
+const makeStyles = (
+  colors: ThemeColors,
+) => ({
+  base: StyleSheet.create({
+    badge: {
+      paddingHorizontal: space.sm,
+      paddingVertical: 3,
+      borderRadius: radius.pill,
+    },
 
-  label: {
-    fontSize: 12,
-    fontWeight: '700',
-  },
-});
+    label: {
+      fontSize: 12,
+      fontWeight: '700',
+    },
+  }),
 
-const toneStyles = StyleSheet.create({
-  neutral: {
-    backgroundColor: '#E2E8F0',
-  },
-  primary: {
-    backgroundColor: colors.primarySoft,
-  },
-  success: {
-    backgroundColor: colors.successSoft,
-  },
-  danger: {
-    backgroundColor: colors.dangerSoft,
-  },
-  warning: {
-    backgroundColor: colors.warningSoft,
-  },
-});
+  tone: StyleSheet.create({
+    neutral: {
+      backgroundColor: colors.neutralSoft,
+    },
+    primary: {
+      backgroundColor: colors.primarySoft,
+    },
+    success: {
+      backgroundColor: colors.successSoft,
+    },
+    danger: {
+      backgroundColor: colors.dangerSoft,
+    },
+    warning: {
+      backgroundColor: colors.warningSoft,
+    },
+  }),
 
-const labelToneStyles = StyleSheet.create({
-  neutral: {
-    color: colors.textMuted,
-  },
-  primary: {
-    color: colors.primary,
-  },
-  success: {
-    color: colors.success,
-  },
-  danger: {
-    color: colors.danger,
-  },
-  warning: {
-    color: colors.warning,
-  },
+  labelTone: StyleSheet.create({
+    neutral: {
+      color: colors.textMuted,
+    },
+    primary: {
+      color: colors.primary,
+    },
+    success: {
+      color: colors.success,
+    },
+    danger: {
+      color: colors.danger,
+    },
+    warning: {
+      color: colors.warning,
+    },
+  }),
 });

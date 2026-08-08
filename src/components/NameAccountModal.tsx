@@ -19,9 +19,11 @@ import {
 } from '../ui/AppTextField';
 
 import {
-  colors,
   radius,
   space,
+  useThemeColors,
+  useThemedStyles,
+  type ThemeColors,
 } from '../ui/theme';
 
 interface Props {
@@ -43,6 +45,9 @@ export function NameAccountModal({
   onSubmit,
   onCancel,
 }: Props) {
+  const colors = useThemeColors();
+  const styles = useThemedStyles(makeStyles);
+
   const [name, setName] =
     useState(initialName);
 
@@ -114,7 +119,9 @@ export function NameAccountModal({
   );
 }
 
-const styles =
+const makeStyles = (
+  colors: ThemeColors,
+) =>
   StyleSheet.create({
     backdrop: {
       flex: 1,

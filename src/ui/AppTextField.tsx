@@ -9,9 +9,11 @@ import {
 } from 'react-native';
 
 import {
-  colors,
   radius,
   space,
+  useThemeColors,
+  useThemedStyles,
+  type ThemeColors,
 } from './theme';
 
 interface Props extends TextInputProps {
@@ -27,6 +29,9 @@ export function AppTextField({
   style,
   ...rest
 }: Props) {
+  const colors = useThemeColors();
+  const styles = useThemedStyles(makeStyles);
+
   return (
     <View style={styles.wrap}>
       {label ? (
@@ -36,7 +41,9 @@ export function AppTextField({
       ) : null}
 
       <TextInput
-        placeholderTextColor={colors.textSubtle}
+        placeholderTextColor={
+          colors.textSubtle
+        }
         style={[
           styles.input,
           error ? styles.inputError : null,
@@ -58,41 +65,44 @@ export function AppTextField({
   );
 }
 
-const styles = StyleSheet.create({
-  wrap: {
-    gap: space.sm,
-  },
+const makeStyles = (
+  colors: ThemeColors,
+) =>
+  StyleSheet.create({
+    wrap: {
+      gap: space.sm,
+    },
 
-  label: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: colors.text,
-  },
+    label: {
+      fontSize: 14,
+      fontWeight: '700',
+      color: colors.text,
+    },
 
-  input: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.borderStrong,
-    borderRadius: radius.md,
-    paddingHorizontal: space.lg,
-    paddingVertical: 14,
-    fontSize: 16,
-    color: colors.text,
-  },
+    input: {
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.borderStrong,
+      borderRadius: radius.md,
+      paddingHorizontal: space.lg,
+      paddingVertical: 14,
+      fontSize: 16,
+      color: colors.text,
+    },
 
-  inputError: {
-    borderColor: colors.danger,
-  },
+    inputError: {
+      borderColor: colors.danger,
+    },
 
-  hint: {
-    fontSize: 13,
-    color: colors.textMuted,
-    lineHeight: 18,
-  },
+    hint: {
+      fontSize: 13,
+      color: colors.textMuted,
+      lineHeight: 18,
+    },
 
-  error: {
-    fontSize: 13,
-    color: colors.danger,
-    lineHeight: 18,
-  },
-});
+    error: {
+      fontSize: 13,
+      color: colors.danger,
+      lineHeight: 18,
+    },
+  });

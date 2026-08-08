@@ -42,6 +42,20 @@ import {
   prepareIsolatedLogin,
 } from '../services/profileCoordinator';
 
+import {
+  isMultiLiveEnabled,
+} from '../constants/features';
+
+import {
+  isAccountLive,
+  useLiveSessionStore,
+} from '../services/liveSessionManager';
+
+import {
+  acquireLoginWebViewSlot,
+  releaseLoginWebViewSlot,
+} from '../services/webViewAdmission';
+
 const ACCOUNT_INDEX_KEY =
   'messenger.accounts.index.v1';
 
@@ -239,7 +253,17 @@ export const useAccountStore =
       const profileId =
         existingProfileId ?? newProfileId();
 
-      await prepareIsolatedLogin(profileId);
+      // The login WebView is about to be created, so it must
+      // own the process-global pending-profile slot until it
+      // exists. LoginScreen releases it.
+      await acquireLoginWebViewSlot();
+
+      try {
+        await prepareIsolatedLogin(profileId);
+      } catch (error) {
+        releaseLoginWebViewSlot();
+        throw error;
+      }
 
       set({
         pendingLoginProfileId: profileId,
@@ -323,14 +347,33 @@ export const useAccountStore =
         throw error;
       }
 
+      const multiLive =
+        mode === 'isolated' &&
+        isMultiLiveEnabled();
+
       set((state) => ({
         accounts: nextAccounts,
         activeAccountId: accountId,
         pendingLoginProfileId: null,
-        webViewEpoch:
-          state.webViewEpoch + 1,
+        // Remounting every warm WebView because one new
+        // account signed in would throw away the other
+        // sessions' loaded chats.
+        webViewEpoch: multiLive
+          ? state.webViewEpoch
+          : state.webViewEpoch + 1,
         error: null,
       }));
+
+      if (multiLive && resolvedProfileId) {
+        useLiveSessionStore
+          .getState()
+          .requestLive(
+            accountId,
+            resolvedProfileId,
+          );
+      }
+
+      releaseLoginWebViewSlot();
 
       return accountId;
     },
@@ -392,17 +435,42 @@ export const useAccountStore =
         get().defaultAccountId,
       );
 
+      const multiLive =
+        mode === 'isolated' &&
+        isMultiLiveEnabled();
+
       set((state) => ({
         accounts: nextAccounts,
         activeAccountId: accountId,
         pendingLoginProfileId: null,
-        webViewEpoch:
-          state.webViewEpoch + 1,
+        webViewEpoch: multiLive
+          ? state.webViewEpoch
+          : state.webViewEpoch + 1,
         error: null,
       }));
+
+      if (multiLive && resolvedProfileId) {
+        // Reauthentication reuses the account's profile, so
+        // the warm WebView still shows the signed-out page:
+        // recycle it instead of reusing it.
+        useLiveSessionStore
+          .getState()
+          .requestLive(
+            accountId,
+            resolvedProfileId,
+            { recycle: true },
+          );
+      }
+
+      releaseLoginWebViewSlot();
     },
 
     async cancelLogin() {
+      // The login WebView is going away; free the creation
+      // slot before any await so warm sessions can resume
+      // being admitted.
+      releaseLoginWebViewSlot();
+
       const pendingProfileId =
         get().pendingLoginProfileId;
 
@@ -434,7 +502,21 @@ export const useAccountStore =
             await activateIsolatedSession(
               ownedAccount.id,
               pendingProfileId,
+              {
+                bindNextWebView:
+                  !isMultiLiveEnabled(),
+              },
             );
+
+            if (isMultiLiveEnabled()) {
+              useLiveSessionStore
+                .getState()
+                .requestLive(
+                  ownedAccount.id,
+                  pendingProfileId,
+                  { recycle: true },
+                );
+            }
           } catch {
             // Leave the account marked for reauth
             // by the switch path below if needed.
@@ -469,6 +551,21 @@ export const useAccountStore =
         );
       }
 
+      const multiLive =
+        isMultiLiveEnabled() &&
+        (await resolveSessionMode()) ===
+          'isolated';
+
+      // Multi-live: an account whose WebView is already warm
+      // and visible needs no work at all.
+      if (
+        multiLive &&
+        get().activeAccountId === accountId &&
+        isAccountLive(accountId)
+      ) {
+        return;
+      }
+
       set({
         isSwitching: true,
         error: null,
@@ -482,6 +579,10 @@ export const useAccountStore =
           | string
           | undefined;
 
+        // Multi-live keeps every warm WebView mounted, so a
+        // switch must not invalidate their keys.
+        let remountWebViews = true;
+
         if (mode === 'isolated') {
           // Isolated switch: no cookie wipe, no web
           // storage wipe. The target account's
@@ -492,16 +593,44 @@ export const useAccountStore =
             target.profileId ??
             newProfileId();
 
-          await activateIsolatedSession(
-            accountId,
-            switchedProfileId,
-            {
-              // One-time rewrite of host-only cookie
-              // copies from the first ML-1 migration.
-              forceRemigrate:
-                !target.profileCookiesV2,
-            },
-          );
+          if (multiLive) {
+            remountWebViews = false;
+
+            // A session that is already warm keeps its live
+            // cookies; re-running migration would cost a
+            // native round trip for nothing.
+            if (!isAccountLive(accountId)) {
+              await activateIsolatedSession(
+                accountId,
+                switchedProfileId,
+                {
+                  forceRemigrate:
+                    !target.profileCookiesV2,
+                  // The container binds the profile itself,
+                  // under the admission lock.
+                  bindNextWebView: false,
+                },
+              );
+            }
+
+            useLiveSessionStore
+              .getState()
+              .requestLive(
+                accountId,
+                switchedProfileId,
+              );
+          } else {
+            await activateIsolatedSession(
+              accountId,
+              switchedProfileId,
+              {
+                // One-time rewrite of host-only cookie
+                // copies from the first ML-1 migration.
+                forceRemigrate:
+                  !target.profileCookiesV2,
+              },
+            );
+          }
         } else {
           await switchGlobalSession(
             accountId,
@@ -529,8 +658,9 @@ export const useAccountStore =
         set((state) => ({
           accounts: nextAccounts,
           activeAccountId: accountId,
-          webViewEpoch:
-            state.webViewEpoch + 1,
+          webViewEpoch: remountWebViews
+            ? state.webViewEpoch + 1
+            : state.webViewEpoch,
         }));
 
         await saveIndex(
@@ -761,6 +891,14 @@ export const useAccountStore =
     },
 
     async forceClearCookies() {
+      // Unmount every warm WebView first: a live session must
+      // never keep running against a profile that is about to
+      // be wiped, and AndroidX refuses to delete an in-use
+      // profile.
+      useLiveSessionStore
+        .getState()
+        .releaseAll();
+
       await forceClearGlobalSession();
 
       // In isolated mode each account also holds its
@@ -801,6 +939,13 @@ export const useAccountStore =
           (account) =>
             account.id === accountId,
         )?.profileId;
+
+      // Drop the warm WebView before its profile is cleared
+      // or deleted (ML-3 deletion order: unmount, then clear
+      // the profile, then the snapshot and metadata).
+      useLiveSessionStore
+        .getState()
+        .release(accountId);
 
       const remaining =
         get().accounts.filter(

@@ -36,9 +36,11 @@ import {
 } from '../ui/AppTextField';
 
 import {
-  colors,
   radius,
   space,
+  useThemeColors,
+  useThemedStyles,
+  type ThemeColors,
 } from '../ui/theme';
 
 interface Props {
@@ -51,6 +53,9 @@ export function SetupPinScreen({
   subtitle =
     'Create a PIN before saved Messenger sessions can be opened. Biometrics are optional.',
 }: Props) {
+  const colors = useThemeColors();
+  const styles = useThemedStyles(makeStyles);
+
   const insets = useSafeAreaInsets();
 
   const biometric =
@@ -201,12 +206,12 @@ export function SetupPinScreen({
           }
           trackColor={{
             false: colors.borderStrong,
-            true: '#93C5FD',
+            true: colors.primaryBorder,
           }}
           thumbColor={
             enableBiometric && biometric.usable
               ? colors.primary
-              : '#F8FAFC'
+              : colors.surface
           }
         />
       </View>
@@ -232,7 +237,10 @@ export function SetupPinScreen({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (
+  colors: ThemeColors,
+) =>
+  StyleSheet.create({
   container: {
     flex: 1,
     paddingHorizontal: space.xl,

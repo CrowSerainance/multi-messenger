@@ -36,6 +36,10 @@ import {
 } from '../services/profileCoordinator';
 
 import {
+  releaseLoginWebViewSlot,
+} from '../services/webViewAdmission';
+
+import {
   type LoginCancellationDestination,
   useAccountStore,
 } from '../store/accountStore';
@@ -53,8 +57,10 @@ import {
 } from '../ui/ScreenHeader';
 
 import {
-  colors,
   space,
+  useThemeColors,
+  useThemedStyles,
+  type ThemeColors,
 } from '../ui/theme';
 
 import {
@@ -79,6 +85,9 @@ export function LoginScreen({
   onComplete,
   onCancel,
 }: Props) {
+  const colors = useThemeColors();
+  const styles = useThemedStyles(makeStyles);
+
   const createAccountFromLogin =
     useAccountStore(
       (state) =>
@@ -140,7 +149,17 @@ export function LoginScreen({
     useRef(false);
 
   const webViewRef =
-    useRef<WebView>(null);
+    useRef<WebView | null>(null);
+
+  // prepareLogin holds the global WebView-creation slot so no
+  // warm session can be admitted into the wrong profile while
+  // this screen mounts. Release it whichever way the screen ends.
+  useEffect(
+    () => () => {
+      releaseLoginWebViewSlot();
+    },
+    [],
+  );
 
   // Stamps the freshly created login storage
   // with its new owner so the Messenger WebView
@@ -404,7 +423,16 @@ export function LoginScreen({
       )}
 
       <WebView
-        ref={webViewRef}
+        ref={(instance) => {
+          webViewRef.current = instance;
+
+          if (instance) {
+            // The native login WebView exists and is bound to
+            // its destination profile; warm sessions may be
+            // admitted again.
+            releaseLoginWebViewSlot();
+          }
+        }}
         source={{
           uri: MESSENGER_LOGIN_URL,
         }}
@@ -505,7 +533,9 @@ export function LoginScreen({
   );
 }
 
-const styles =
+const makeStyles = (
+  colors: ThemeColors,
+) =>
   StyleSheet.create({
     container: {
       flex: 1,
@@ -538,7 +568,7 @@ const styles =
     busyOverlay: {
       ...StyleSheet.absoluteFill,
       backgroundColor:
-        'rgba(255,255,255,0.78)',
+        colors.scrim,
       justifyContent: 'center',
       alignItems: 'center',
       gap: space.md,

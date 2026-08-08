@@ -21,6 +21,22 @@ import {
 } from '../components/MessengerWebView';
 
 import {
+  MultiMessengerContainer,
+} from '../components/MultiMessengerContainer';
+
+import {
+  MAX_LIVE_SESSIONS,
+} from '../constants/features';
+
+import {
+  useLiveSessionStore,
+} from '../services/liveSessionManager';
+
+import type {
+  LiveSessionState,
+} from '../types/liveSession';
+
+import {
   useAccountStore,
 } from '../store/accountStore';
 
@@ -37,12 +53,21 @@ import {
 } from '../ui/ScreenHeader';
 
 import {
-  colors,
   radius,
   space,
+  useThemeColors,
+  useThemedStyles,
+  type ThemeColors,
 } from '../ui/theme';
 
 interface Props {
+  /**
+   * True when isolated profiles + multi-live are active. Sessions
+   * are then kept warm by MultiMessengerContainer and switching is
+   * visibility-only; false keeps the legacy single, remounting
+   * WebView.
+   */
+  multiLive: boolean;
   onAddAccount(): void;
   onReauthenticate(
     accountId: string,
@@ -52,11 +77,15 @@ interface Props {
 }
 
 export function MessengerScreen({
+  multiLive,
   onAddAccount,
   onReauthenticate,
   onBackToAccounts,
   onOpenDiagnostics,
 }: Props) {
+  const colors = useThemeColors();
+  const styles = useThemedStyles(makeStyles);
+
   const insets = useSafeAreaInsets();
 
   const [
@@ -99,6 +128,33 @@ export function MessengerScreen({
       (state) =>
         state.markExpired,
     );
+
+  const liveEntries =
+    useLiveSessionStore(
+      (state) => state.entries,
+    );
+
+  const liveStateOf = (
+    accountId: string,
+    status: string,
+  ): LiveSessionState => {
+    if (status === 'expired') {
+      return 'expired';
+    }
+
+    const entry = liveEntries.find(
+      (candidate) =>
+        candidate.accountId === accountId,
+    );
+
+    if (!entry) {
+      return 'hibernated';
+    }
+
+    return entry.ready
+      ? 'live'
+      : 'loading';
+  };
 
   const activeAccount =
     accounts.find(
@@ -201,15 +257,23 @@ export function MessengerScreen({
         }
       />
 
-      <MessengerWebView
-        accountId={
-          activeAccountId
-        }
-        epoch={epoch}
-        onExpired={() => {
-          void handleExpired();
-        }}
-      />
+      {multiLive ? (
+        <MultiMessengerContainer
+          onReauthenticate={
+            onReauthenticate
+          }
+        />
+      ) : (
+        <MessengerWebView
+          accountId={
+            activeAccountId
+          }
+          epoch={epoch}
+          onExpired={() => {
+            void handleExpired();
+          }}
+        />
+      )}
 
       {isSwitching && (
         <View style={styles.overlay}>
@@ -262,8 +326,9 @@ export function MessengerScreen({
             </Text>
 
             <Text style={styles.sheetHint}>
-              Only one Messenger session is
-              active at a time.
+              {multiLive
+                ? `Up to ${MAX_LIVE_SESSIONS} accounts stay signed in and loaded, so switching is instant.`
+                : 'Only one Messenger session is active at a time.'}
             </Text>
 
             <FlatList
@@ -322,6 +387,46 @@ export function MessengerScreen({
                             tone="danger"
                           />
                         )}
+
+                        {multiLive &&
+                          item.status !==
+                            'expired' &&
+                          (() => {
+                            const state =
+                              liveStateOf(
+                                item.id,
+                                item.status,
+                              );
+
+                            if (
+                              state === 'live'
+                            ) {
+                              return (
+                                <AppBadge
+                                  label="Live"
+                                  tone="success"
+                                />
+                              );
+                            }
+
+                            if (
+                              state === 'loading'
+                            ) {
+                              return (
+                                <AppBadge
+                                  label="Loading"
+                                  tone="warning"
+                                />
+                              );
+                            }
+
+                            return (
+                              <AppBadge
+                                label="Hibernated"
+                                tone="neutral"
+                              />
+                            );
+                          })()}
                       </View>
                     </View>
 
@@ -368,7 +473,9 @@ export function MessengerScreen({
   );
 }
 
-const styles =
+const makeStyles = (
+  colors: ThemeColors,
+) =>
   StyleSheet.create({
     container: {
       flex: 1,
@@ -400,7 +507,7 @@ const styles =
     overlay: {
       ...StyleSheet.absoluteFill,
       backgroundColor:
-        'rgba(255,255,255,0.82)',
+        colors.scrim,
       justifyContent: 'center',
       alignItems: 'center',
       gap: space.md,
@@ -468,7 +575,7 @@ const styles =
     },
 
     accountRowPressed: {
-      backgroundColor: '#EEF2FF',
+      backgroundColor: colors.surfacePressed,
     },
 
     rowBody: {

@@ -17,8 +17,9 @@ import {
 } from './AppButton';
 
 import {
-  colors,
   space,
+  useThemedStyles,
+  type ThemeColors,
 } from './theme';
 
 interface Props {
@@ -39,6 +40,8 @@ export function ScreenHeader({
   style,
 }: Props) {
   const insets = useSafeAreaInsets();
+
+  const styles = useThemedStyles(makeStyles);
 
   return (
     <View
@@ -91,44 +94,48 @@ export function ScreenHeader({
   );
 }
 
-const styles = StyleSheet.create({
-  wrap: {
-    backgroundColor: colors.surface,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
-    paddingBottom: space.sm,
-    paddingHorizontal: space.sm,
-  },
+const makeStyles = (
+  colors: ThemeColors,
+) =>
+  StyleSheet.create({
+    wrap: {
+      backgroundColor: colors.surface,
+      borderBottomWidth:
+        StyleSheet.hairlineWidth,
+      borderBottomColor: colors.border,
+      paddingBottom: space.sm,
+      paddingHorizontal: space.sm,
+    },
 
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    minHeight: 44,
-  },
+    row: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      minHeight: 44,
+    },
 
-  side: {
-    minWidth: 72,
-  },
+    side: {
+      minWidth: 72,
+    },
 
-  right: {
-    alignItems: 'flex-end',
-  },
+    right: {
+      alignItems: 'flex-end',
+    },
 
-  center: {
-    flex: 1,
-    alignItems: 'center',
-    paddingHorizontal: space.sm,
-  },
+    center: {
+      flex: 1,
+      alignItems: 'center',
+      paddingHorizontal: space.sm,
+    },
 
-  title: {
-    fontSize: 17,
-    fontWeight: '800',
-    color: colors.text,
-  },
+    title: {
+      fontSize: 17,
+      fontWeight: '800',
+      color: colors.text,
+    },
 
-  subtitle: {
-    marginTop: 2,
-    fontSize: 12,
-    color: colors.textMuted,
-  },
-});
+    subtitle: {
+      marginTop: 2,
+      fontSize: 12,
+      color: colors.textMuted,
+    },
+  });
