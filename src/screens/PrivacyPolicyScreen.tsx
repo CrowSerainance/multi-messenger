@@ -77,8 +77,15 @@ export function PrivacyPolicyScreen({
           An app PIN is required before saved
           sessions can be read. Optional biometric
           unlock is only a convenience layer for
-          that same local unlock step. Screenshots
-          are blocked on sensitive screens.
+          that same local unlock step.
+        </Text>
+
+        <Text style={styles.body}>
+          Screenshots are allowed by default. You
+          can block screenshots, screen recording,
+          and the app switcher preview from
+          Security settings. Blocking them does not
+          change how sessions are stored.
         </Text>
 
         <Text style={styles.body}>

@@ -257,23 +257,38 @@ export function MessengerScreen({
         }
       />
 
-      {multiLive ? (
-        <MultiMessengerContainer
-          onReauthenticate={
-            onReauthenticate
-          }
-        />
-      ) : (
-        <MessengerWebView
-          accountId={
-            activeAccountId
-          }
-          epoch={epoch}
-          onExpired={() => {
-            void handleExpired();
-          }}
-        />
-      )}
+      {/*
+        The app draws edge-to-edge, so without this inset the page's
+        own composer sits underneath the system navigation bar. Both
+        session paths share the host so warm and legacy WebViews get
+        exactly the same height.
+      */}
+      <View
+        style={[
+          styles.webViewHost,
+          {
+            paddingBottom: insets.bottom,
+          },
+        ]}
+      >
+        {multiLive ? (
+          <MultiMessengerContainer
+            onReauthenticate={
+              onReauthenticate
+            }
+          />
+        ) : (
+          <MessengerWebView
+            accountId={
+              activeAccountId
+            }
+            epoch={epoch}
+            onExpired={() => {
+              void handleExpired();
+            }}
+          />
+        )}
+      </View>
 
       {isSwitching && (
         <View style={styles.overlay}>
@@ -478,6 +493,11 @@ const makeStyles = (
 ) =>
   StyleSheet.create({
     container: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+
+    webViewHost: {
       flex: 1,
       backgroundColor: colors.background,
     },

@@ -18,7 +18,9 @@
     "zustand": "^5.0.14"
   },
   "devDependencies": {
+    "@types/jest": "^30.0.0",
     "@types/react": "~19.2.2",
+    "jest-expo": "57.0.2",
     "patch-package": "^8.0.1",
     "typescript": "~6.0.3"
   },
@@ -29,7 +31,14 @@
     "web": "expo start --web",
     "prebuild": "expo prebuild",
     "postinstall": "patch-package",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "jest"
+  },
+  "jest": {
+    "preset": "jest-expo",
+    "testMatch": [
+      "**/__tests__/**/*.test.ts"
+    ]
   },
   "private": true
 }

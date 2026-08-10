@@ -273,6 +273,72 @@ export function MultiMessengerContainer({
     [markExpired, onReauthenticate],
   );
 
+  // One stable callback for every layer: an inline arrow per slot
+  // would be a new function on each render, and the child reports
+  // its busy state from an effect.
+  const handleBusyChange = useCallback(
+    (accountId: string, busy: boolean) => {
+      useLiveSessionStore
+        .getState()
+        .setBusy(accountId, busy);
+    },
+    [],
+  );
+
+  const activeAccountIdRef =
+    useRef(activeAccountId);
+
+  useEffect(() => {
+    activeAccountIdRef.current =
+      activeAccountId;
+  }, [activeAccountId]);
+
+  const handleRendererGone = useCallback(
+    (accountId: string) => {
+      const store =
+        useLiveSessionStore.getState();
+
+      const entry = store.entries.find(
+        (candidate) =>
+          candidate.accountId === accountId,
+      );
+
+      if (!entry) {
+        return;
+      }
+
+      if (__DEV__) {
+        console.log(
+          'LIVE_RENDERER_GONE',
+          accountId ===
+            activeAccountIdRef.current
+            ? 'active'
+            : 'background',
+        );
+      }
+
+      if (
+        accountId ===
+        activeAccountIdRef.current
+      ) {
+        // The user is looking at this layer, so replace it
+        // immediately instead of leaving a dead surface.
+        store.requestLive(
+          accountId,
+          entry.profileId,
+          { recycle: true },
+        );
+
+        return;
+      }
+
+      // A dead background layer must not keep counting as warm;
+      // the next switch re-admits it from its profile.
+      store.release(accountId);
+    },
+    [],
+  );
+
   const activeIsMounted =
     activeAccountId !== null &&
     mounted.some(
@@ -302,12 +368,26 @@ export function MultiMessengerContainer({
             pointerEvents={
               isActive ? 'auto' : 'none'
             }
+            // A hidden account's chats must not be reachable by a
+            // screen reader while another account is on screen.
+            importantForAccessibility={
+              isActive
+                ? 'auto'
+                : 'no-hide-descendants'
+            }
+            accessibilityElementsHidden={
+              !isActive
+            }
             collapsable={false}
           >
             <MessengerWebView
               accountId={slot.accountId}
               epoch={epoch}
               isActive={isActive}
+              onBusyChange={handleBusyChange}
+              onRendererGone={
+                handleRendererGone
+              }
               onNativeCreated={
                 handleNativeCreated
               }
