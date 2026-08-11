@@ -78,6 +78,10 @@ import {
 } from './src/store/appLockStore';
 
 import {
+  usePreferencesStore,
+} from './src/store/preferencesStore';
+
+import {
   getWebViewProfileCapabilityForDiagnostics,
   resolveSessionMode,
   runWebViewProfileSelfTest,
@@ -193,9 +197,20 @@ export default function App() {
         state.persistActiveSession,
     );
 
+  const bootstrapPreferences =
+    usePreferencesStore(
+      (state) => state.bootstrap,
+    );
+
   useEffect(() => {
     void bootstrapLock();
   }, [bootstrapLock]);
+
+  // Screenshot policy is a plain local preference, so it loads
+  // independently of the PIN gate.
+  useEffect(() => {
+    void bootstrapPreferences();
+  }, [bootstrapPreferences]);
 
   useEffect(() => {
     if (!isMultiLiveEnabled()) {

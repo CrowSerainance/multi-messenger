@@ -24,6 +24,10 @@ import {
 } from '../store/appLockStore';
 
 import {
+  usePreferencesStore,
+} from '../store/preferencesStore';
+
+import {
   SensitiveScreen,
 } from '../components/SensitiveScreen';
 
@@ -87,6 +91,16 @@ export function SecuritySettingsScreen({
         state.refreshBiometricAvailability,
     );
 
+  const allowScreenCapture =
+    usePreferencesStore(
+      (state) => state.allowScreenCapture,
+    );
+
+  const setAllowScreenCapture =
+    usePreferencesStore(
+      (state) => state.setAllowScreenCapture,
+    );
+
   const [currentPin, setCurrentPin] =
     useState('');
   const [nextPin, setNextPin] =
@@ -135,6 +149,29 @@ export function SecuritySettingsScreen({
       );
     } finally {
       setBusy(false);
+    }
+  };
+
+  const onToggleScreenCapture = async (
+    allowed: boolean,
+  ) => {
+    setError(null);
+    setMessage(null);
+
+    try {
+      await setAllowScreenCapture(allowed);
+
+      setMessage(
+        allowed
+          ? 'Screenshots are allowed.'
+          : 'Screenshots are blocked again.',
+      );
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : 'Unable to save the screenshot setting.',
+      );
     }
   };
 
@@ -284,6 +321,41 @@ export function SecuritySettingsScreen({
             thumbColor={
               config?.biometricEnabled &&
               biometric.usable
+                ? colors.primary
+                : colors.surface
+            }
+          />
+        </View>
+
+        <Text style={styles.section}>
+          Screenshots
+        </Text>
+
+        <View style={styles.row}>
+          <View style={styles.rowText}>
+            <Text style={styles.rowTitle}>
+              Allow screenshots
+            </Text>
+
+            <Text style={styles.rowHint}>
+              {allowScreenCapture
+                ? 'Screenshots and screen recording work. Open chats also show in the app switcher preview.'
+                : 'Screenshots and screen recording are blocked, and the app switcher preview stays blank.'}
+            </Text>
+          </View>
+
+          <Switch
+            value={allowScreenCapture}
+            onValueChange={(value) => {
+              void onToggleScreenCapture(value);
+            }}
+            disabled={busy}
+            trackColor={{
+              false: colors.borderStrong,
+              true: colors.primaryBorder,
+            }}
+            thumbColor={
+              allowScreenCapture
                 ? colors.primary
                 : colors.surface
             }

@@ -1,4 +1,6 @@
 import React, {
+  useCallback,
+  useEffect,
   useState,
 } from 'react';
 
@@ -18,6 +20,35 @@ import {
   getSessionDiagnostics,
   type SessionDiagnosticEntry,
 } from '../services/sessionDiagnostics';
+
+import {
+  isMultiLiveEnabled,
+  MAX_LIVE_SESSIONS,
+} from '../constants/features';
+
+import {
+  useLiveSessionStore,
+} from '../services/liveSessionManager';
+
+import {
+  getWebViewProfileCapability,
+  listWebViewProfiles,
+  resolveSessionMode,
+  type SessionMode,
+  type WebViewProfileCapabilityReport,
+} from '../services/profileBackend';
+
+import {
+  describeWebViewAdmission,
+} from '../services/webViewAdmission';
+
+import {
+  useAccountStore,
+} from '../store/accountStore';
+
+import {
+  AppBadge,
+} from '../ui/AppBadge';
 
 import {
   AppButton,
@@ -60,9 +91,180 @@ export function SessionDiagnosticsScreen({
       readNewestFirst,
     );
 
+  const accounts =
+    useAccountStore(
+      (state) => state.accounts,
+    );
+
+  const liveEntries =
+    useLiveSessionStore(
+      (state) => state.entries,
+    );
+
+  const [mode, setMode] =
+    useState<SessionMode | null>(null);
+
+  const [capability, setCapability] =
+    useState<WebViewProfileCapabilityReport | null>(
+      null,
+    );
+
+  const [profileNames, setProfileNames] =
+    useState<string[] | null>(null);
+
+  const [profileError, setProfileError] =
+    useState<string | null>(null);
+
+  const loadSessionState =
+    useCallback(async () => {
+      setMode(await resolveSessionMode());
+      setCapability(
+        await getWebViewProfileCapability(),
+      );
+
+      try {
+        setProfileNames(
+          await listWebViewProfiles(),
+        );
+        setProfileError(null);
+      } catch (error) {
+        setProfileNames(null);
+        setProfileError(
+          error instanceof Error
+            ? error.message
+            : 'Profile list unavailable.',
+        );
+      }
+    }, []);
+
+  useEffect(() => {
+    void loadSessionState();
+  }, [loadSessionState]);
+
   const refresh = () => {
     setEntries(readNewestFirst());
+    void loadSessionState();
   };
+
+  const admission = describeWebViewAdmission();
+
+  const knownProfileIds = new Set(
+    accounts
+      .map((account) => account.profileId)
+      .filter(
+        (profileId): profileId is string =>
+          !!profileId,
+      ),
+  );
+
+  const orphanProfiles =
+    profileNames?.filter(
+      (name) => !knownProfileIds.has(name),
+    ) ?? [];
+
+  const sessionSummary = (
+    <View style={styles.entry}>
+      <Text style={styles.event}>
+        Session mode
+      </Text>
+
+      <Text style={styles.detail}>
+        Mode: {mode ?? 'resolving…'}
+        {mode === 'isolated' &&
+        isMultiLiveEnabled()
+          ? ' + multi-live'
+          : ''}
+      </Text>
+
+      {capability?.available ? (
+        <>
+          <Text style={styles.detail}>
+            MULTI_PROFILE:{' '}
+            {capability.multiProfileSupported
+              ? 'supported'
+              : 'unsupported'}
+            , multiprocess:{' '}
+            {String(
+              capability.multiProcessEnabled,
+            )}
+          </Text>
+
+          <Text style={styles.detail}>
+            Provider:{' '}
+            {capability.providerPackageName}{' '}
+            {capability.providerVersionName}{' '}
+            (SDK {capability.androidSdkInt})
+          </Text>
+        </>
+      ) : (
+        <Text style={styles.detail}>
+          Capability:{' '}
+          {capability?.reason ?? 'checking…'}
+        </Text>
+      )}
+
+      <Text style={styles.detail}>
+        Warm sessions: {liveEntries.length} /{' '}
+        {MAX_LIVE_SESSIONS}
+      </Text>
+
+      {liveEntries.map((entry) => {
+        const account = accounts.find(
+          (candidate) =>
+            candidate.id === entry.accountId,
+        );
+
+        return (
+          <View
+            key={entry.accountId}
+            style={styles.liveRow}
+          >
+            <Text
+              style={styles.detail}
+              numberOfLines={1}
+            >
+              {account?.name ?? 'Unknown account'}{' '}
+              (gen {entry.generation})
+            </Text>
+
+            <AppBadge
+              label={
+                entry.ready ? 'Live' : 'Loading'
+              }
+              tone={
+                entry.ready
+                  ? 'success'
+                  : 'warning'
+              }
+            />
+
+            {entry.busy && (
+              <AppBadge
+                label="Busy"
+                tone="primary"
+              />
+            )}
+          </View>
+        );
+      })}
+
+      <Text style={styles.detail}>
+        WebView creation slot:{' '}
+        {admission.holder ?? 'free'} (queued{' '}
+        {admission.queued})
+      </Text>
+
+      <Text style={styles.detail}>
+        Native profiles:{' '}
+        {profileNames?.length ??
+          profileError ??
+          '—'}
+        {profileNames
+          ? `, orphaned ${orphanProfiles.length}`
+          : ''}
+      </Text>
+    </View>
+  );
 
   const clear = () => {
     clearSessionDiagnostics();
@@ -113,10 +315,11 @@ export function SessionDiagnosticsScreen({
               ) + space.lg,
           },
         ]}
+        ListHeaderComponent={sessionSummary}
         ListEmptyComponent={
           <EmptyState
-            title="No diagnostics yet"
-            body="Session operations will appear here if a native cookie or storage call fails or times out."
+            title="No failures recorded"
+            body="Session operations appear here if a native cookie or storage call fails or times out."
           />
         }
         renderItem={({ item }) => (
@@ -201,6 +404,13 @@ const makeStyles = (
 
   detail: {
     color: colors.textMuted,
+  },
+
+  liveRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: space.sm,
   },
 
   errorCode: {

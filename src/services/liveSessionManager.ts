@@ -145,26 +145,51 @@ export const useLiveSessionStore =
       });
     },
 
+    // markReady and setBusy are called from WebView callbacks that
+    // can fire repeatedly. They must return the *same* entries
+    // array when nothing changed: a fresh array on every call would
+    // re-render the container, hand its children new callbacks, and
+    // feed the next identical call straight back in.
     markReady(accountId) {
-      set((state) => ({
-        entries: state.entries.map((entry) =>
-          entry.accountId === accountId &&
-          !entry.ready
-            ? { ...entry, ready: true }
-            : entry,
-        ),
-      }));
+      set((state) => {
+        const target = state.entries.find(
+          (entry) =>
+            entry.accountId === accountId,
+        );
+
+        if (!target || target.ready) {
+          return state;
+        }
+
+        return {
+          entries: state.entries.map((entry) =>
+            entry.accountId === accountId
+              ? { ...entry, ready: true }
+              : entry,
+          ),
+        };
+      });
     },
 
     setBusy(accountId, busy) {
-      set((state) => ({
-        entries: state.entries.map((entry) =>
-          entry.accountId === accountId &&
-          entry.busy !== busy
-            ? { ...entry, busy }
-            : entry,
-        ),
-      }));
+      set((state) => {
+        const target = state.entries.find(
+          (entry) =>
+            entry.accountId === accountId,
+        );
+
+        if (!target || target.busy === busy) {
+          return state;
+        }
+
+        return {
+          entries: state.entries.map((entry) =>
+            entry.accountId === accountId
+              ? { ...entry, busy }
+              : entry,
+          ),
+        };
+      });
     },
 
     release(accountId) {

@@ -3,6 +3,7 @@ import React, {
   useEffect,
   useMemo,
   useRef,
+  useState,
 } from 'react';
 
 import {
@@ -71,10 +72,93 @@ interface Props {
   onNativeCreated?(): void;
   /** Fires on the first completed load of this session. */
   onReady?(): void;
+  /**
+   * True while this session is in a transaction that must not be
+   * interrupted by eviction: a call, or an in-flight attachment
+   * upload. Receives the account id so the container can pass one
+   * stable callback to every layer.
+   */
+  onBusyChange?(
+    accountId: string,
+    busy: boolean,
+  ): void;
+  /** The WebView's renderer process died; this layer is dead. */
+  onRendererGone?(accountId: string): void;
 }
 
 const LOAD_SAVE_THROTTLE_MS =
   30_000;
+
+const UPLOAD_ACTIVE_MESSAGE =
+  'MMW_UPLOAD_ACTIVE';
+
+const UPLOAD_IDLE_MESSAGE =
+  'MMW_UPLOAD_IDLE';
+
+/**
+ * Upload detection is a heuristic: react-native-webview exposes no
+ * cross-platform file-chooser or upload-progress event, so the page
+ * itself reports when a file input is used. The in-page ceiling
+ * releases the flag even if the upload never reports completion, so
+ * a stuck page cannot pin a warm session forever.
+ */
+const UPLOAD_WATCH_SCRIPT = `
+(function () {
+  if (window.__mmwUploadHooks) {
+    return true;
+  }
+
+  window.__mmwUploadHooks = true;
+
+  var timer = null;
+
+  function post(message) {
+    try {
+      window.ReactNativeWebView.postMessage(message);
+    } catch (error) {}
+  }
+
+  function idle() {
+    if (timer !== null) {
+      clearTimeout(timer);
+      timer = null;
+    }
+
+    post('${UPLOAD_IDLE_MESSAGE}');
+  }
+
+  function active() {
+    if (timer !== null) {
+      clearTimeout(timer);
+    }
+
+    post('${UPLOAD_ACTIVE_MESSAGE}');
+    timer = setTimeout(idle, 120000);
+  }
+
+  function isFileInput(node) {
+    return !!node &&
+      node.tagName === 'INPUT' &&
+      node.type === 'file';
+  }
+
+  document.addEventListener('click', function (event) {
+    if (isFileInput(event.target)) {
+      active();
+    }
+  }, true);
+
+  document.addEventListener('change', function (event) {
+    if (isFileInput(event.target)) {
+      active();
+    }
+  }, true);
+
+  window.addEventListener('beforeunload', idle);
+
+  true;
+})();
+`;
 
 // Hidden sessions keep their sockets and DOM, but audio or video
 // must not keep playing behind another account's chat.
@@ -99,8 +183,16 @@ export function MessengerWebView({
   onExpired,
   onNativeCreated,
   onReady,
+  onBusyChange,
+  onRendererGone,
 }: Props) {
   const styles = useThemedStyles(makeStyles);
+
+  const [inCall, setInCall] =
+    useState(false);
+
+  const [uploading, setUploading] =
+    useState(false);
 
   const webViewRef =
     useRef<WebView | null>(null);
@@ -149,6 +241,28 @@ export function MessengerWebView({
       );
     }
   }, [isActive]);
+
+  // A call or an in-flight upload marks the session busy so LRU
+  // eviction skips it while the user reads another account.
+  useEffect(() => {
+    onBusyChange?.(
+      accountId,
+      inCall || uploading,
+    );
+  }, [
+    accountId,
+    inCall,
+    uploading,
+    onBusyChange,
+  ]);
+
+  useEffect(
+    () => () => {
+      // An unmounted session cannot be busy.
+      onBusyChange?.(accountId, false);
+    },
+    [accountId, onBusyChange],
+  );
 
   // The store persist path also records the
   // account's last successful refresh time.
@@ -393,7 +507,33 @@ export function MessengerWebView({
           ? undefined
           : storageGuardScript
       }
+      injectedJavaScript={
+        UPLOAD_WATCH_SCRIPT
+      }
+      onRenderProcessGone={() => {
+        // Android killed this WebView's renderer. The layer is
+        // dead: it can neither render nor recover on its own.
+        onRendererGone?.(accountId);
+      }}
+      onContentProcessDidTerminate={() => {
+        onRendererGone?.(accountId);
+      }}
       onMessage={(event) => {
+        const message =
+          event.nativeEvent.data;
+
+        if (
+          message === UPLOAD_ACTIVE_MESSAGE
+        ) {
+          setUploading(true);
+          return;
+        }
+
+        if (message === UPLOAD_IDLE_MESSAGE) {
+          setUploading(false);
+          return;
+        }
+
         if (profileId) {
           return;
         }
@@ -509,9 +649,15 @@ export function MessengerWebView({
         canGoBackRef.current =
           navState.canGoBack;
 
+        const onCall = isCallUrl(
+          navState.url,
+        );
+
+        setInCall(onCall);
+
         if (
-          isActiveRef.current &&
-          isCallUrl(navState.url)
+          onCall &&
+          isActiveRef.current
         ) {
           void ensureMediaPermissions();
         }

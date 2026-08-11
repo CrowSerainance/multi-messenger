@@ -253,6 +253,15 @@ export async function deleteWebViewProfile(
     .deleteProfile(profileName);
 }
 
+/**
+ * Diagnostics only. Profile names are random ids
+ * (`acct-<uuid>`) and carry no session content.
+ */
+export async function listWebViewProfiles():
+Promise<string[]> {
+  return resolveNativeModule().listProfiles();
+}
+
 export interface ProfileSelfTestReport {
   ran: boolean;
   multiProfileSupported: boolean;

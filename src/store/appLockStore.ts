@@ -21,10 +21,11 @@ import {
  * app demand a PIN constantly during normal use —
  * a permission dialog, an external link, or a brief
  * app switch each forced a full re-entry. The lock
- * still engages immediately (so the app is locked
- * while backgrounded, and the app-switcher preview
- * stays protected by FLAG_SECURE); this only allows
- * a silent resume when the user returns quickly.
+ * still engages immediately, so the app is locked
+ * while backgrounded; this only allows a silent
+ * resume when the user returns quickly. The
+ * app-switcher preview is only blanked when the user
+ * has turned screenshots off (see preferencesStore).
  *
  * `lockedAt` lives in memory only, so a killed or
  * restarted process always requires the PIN.
