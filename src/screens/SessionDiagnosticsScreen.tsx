@@ -39,6 +39,12 @@ import {
 } from '../services/profileBackend';
 
 import {
+  clearMessengerRouting,
+  getMessengerRouting,
+  type MessengerRoutingEntry,
+} from '../services/messengerRouting';
+
+import {
   describeWebViewAdmission,
 } from '../services/webViewAdmission';
 
@@ -115,6 +121,10 @@ export function SessionDiagnosticsScreen({
   const [profileError, setProfileError] =
     useState<string | null>(null);
 
+  const [routing, setRouting] = useState<
+    readonly MessengerRoutingEntry[]
+  >(getMessengerRouting);
+
   const loadSessionState =
     useCallback(async () => {
       setMode(await resolveSessionMode());
@@ -143,6 +153,7 @@ export function SessionDiagnosticsScreen({
 
   const refresh = () => {
     setEntries(readNewestFirst());
+    setRouting(getMessengerRouting());
     void loadSessionState();
   };
 
@@ -263,12 +274,38 @@ export function SessionDiagnosticsScreen({
           ? `, orphaned ${orphanProfiles.length}`
           : ''}
       </Text>
+
+      <Text style={styles.event}>
+        Where the session went
+      </Text>
+
+      {routing.length === 0 ? (
+        <Text style={styles.detail}>
+          No navigation decisions recorded yet.
+        </Text>
+      ) : (
+        routing
+          .slice(-8)
+          .reverse()
+          .map((entry) => (
+            <Text
+              key={`${entry.at}-${entry.path}`}
+              style={styles.detail}
+              numberOfLines={1}
+            >
+              {entry.decision}: {entry.host}
+              {entry.path}
+            </Text>
+          ))
+      )}
     </View>
   );
 
   const clear = () => {
     clearSessionDiagnostics();
+    clearMessengerRouting();
     setEntries([]);
+    setRouting([]);
   };
 
   return (
