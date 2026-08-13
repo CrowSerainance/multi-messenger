@@ -23,13 +23,21 @@ import {
 } from 'react-native-webview';
 
 import {
+  isAuthFlowUrl,
   isCallUrl,
+  isFacebookHost,
   isHttpUrl,
   isInAppUrl,
   isLoginUrl,
+  isMessengerUiUrl,
+  MESSENGER_FALLBACK_URL,
   MESSENGER_HOME_URL,
   MESSENGER_USER_AGENT,
 } from '../constants/messenger';
+
+import {
+  recordMessengerRouting,
+} from '../services/messengerRouting';
 
 import {
   isCurrentJarAuthenticated,
@@ -193,6 +201,19 @@ export function MessengerWebView({
 
   const [uploading, setUploading] =
     useState(false);
+
+  // Meta decides where a signed-in session lands. When
+  // messenger.com hands the session to the Facebook site, the
+  // WebView is sent to Facebook's own inbox instead of being left
+  // on the feed.
+  const [sourceUri, setSourceUri] =
+    useState(MESSENGER_HOME_URL);
+
+  const reachedMessengerRef =
+    useRef(false);
+
+  const recoveryUsedRef =
+    useRef(false);
 
   const webViewRef =
     useRef<WebView | null>(null);
@@ -462,6 +483,40 @@ export function MessengerWebView({
       [onExpired, profileId],
     );
 
+  const openExternally = useCallback(
+    (url: string) => {
+      // A hidden session must never pull the user out of the
+      // app on its own.
+      if (!isActiveRef.current) {
+        return;
+      }
+
+      if (__DEV__) {
+        // Host only: full URLs carry tokens.
+        console.log(
+          'EXTERNAL_OPEN',
+          /^https?:\/\/([^/:?#]+)/i.exec(
+            url,
+          )?.[1] ?? 'unknown',
+        );
+      }
+
+      Linking.openURL(url).catch(() => {
+        // Nothing can handle the URL.
+      });
+    },
+    [],
+  );
+
+  const noteLanding = useCallback(
+    (url: string) => {
+      if (isMessengerUiUrl(url)) {
+        reachedMessengerRef.current = true;
+      }
+    },
+    [],
+  );
+
   const attachRef =
     useCallback(
       (instance: WebView | null) => {
@@ -487,7 +542,7 @@ export function MessengerWebView({
       key={`${accountId}:${epoch}`}
       style={styles.webview}
       source={{
-        uri: MESSENGER_HOME_URL,
+        uri: sourceUri,
       }}
       userAgent={
         MESSENGER_USER_AGENT
@@ -591,10 +646,81 @@ export function MessengerWebView({
 
         const url = request.url;
 
+        if (url === 'about:blank') {
+          return true;
+        }
+
+        // Conversations: messenger.com, or Facebook's own inbox
+        // routes when Meta serves the session from there.
+        if (isMessengerUiUrl(url)) {
+          recordMessengerRouting(
+            'messenger',
+            url,
+          );
+
+          return true;
+        }
+
+        // Sign-in, 2FA, checkpoints, and consent screens run in
+        // this account's own profile and must not be pushed out
+        // to another browser. Host-scoped: a chat link to some
+        // other site's /login page is still an external link.
         if (
-          url === 'about:blank' ||
-          isInAppUrl(url)
+          isFacebookHost(url) &&
+          isAuthFlowUrl(url)
         ) {
+          recordMessengerRouting(
+            'auth-flow',
+            url,
+          );
+
+          return true;
+        }
+
+        if (isFacebookHost(url)) {
+          if (reachedMessengerRef.current) {
+            // The session is working and the user tapped a
+            // Facebook link inside a conversation: that belongs
+            // in a browser, not in this session.
+            recordMessengerRouting(
+              'opened-externally',
+              url,
+            );
+
+            openExternally(url);
+
+            return false;
+          }
+
+          if (!recoveryUsedRef.current) {
+            // The session never reached an inbox, so this is
+            // Meta redirecting the account to the Facebook site.
+            // Send it to Facebook's inbox instead of the feed.
+            recoveryUsedRef.current = true;
+
+            recordMessengerRouting(
+              'recovered-to-inbox',
+              url,
+            );
+
+            setSourceUri(
+              MESSENGER_FALLBACK_URL,
+            );
+
+            return false;
+          }
+
+          // Recovery already failed once. Showing Facebook beats
+          // trapping the user in a redirect loop.
+          recordMessengerRouting(
+            'left-on-facebook',
+            url,
+          );
+
+          return true;
+        }
+
+        if (isInAppUrl(url)) {
           return true;
         }
 
@@ -603,27 +729,7 @@ export function MessengerWebView({
         // fb:// or intent:// are dropped so
         // they cannot crash the WebView.
         if (isHttpUrl(url)) {
-          // A hidden session must never pull the user
-          // out of the app on its own.
-          if (!isActiveRef.current) {
-            return false;
-          }
-
-          if (__DEV__) {
-            // Host only: full URLs carry tokens.
-            console.log(
-              'EXTERNAL_OPEN',
-              /^https?:\/\/([^/:?#]+)/i.exec(
-                url,
-              )?.[1] ?? 'unknown',
-            );
-          }
-
-          Linking.openURL(url).catch(
-            () => {
-              // Nothing can handle the URL.
-            },
-          );
+          openExternally(url);
         }
 
         return false;
@@ -631,6 +737,8 @@ export function MessengerWebView({
       onLoadEnd={(event) => {
         const url =
           event.nativeEvent.url;
+
+        noteLanding(url);
 
         if (!readyReportedRef.current) {
           readyReportedRef.current = true;
@@ -648,6 +756,8 @@ export function MessengerWebView({
       ) => {
         canGoBackRef.current =
           navState.canGoBack;
+
+        noteLanding(navState.url);
 
         const onCall = isCallUrl(
           navState.url,
